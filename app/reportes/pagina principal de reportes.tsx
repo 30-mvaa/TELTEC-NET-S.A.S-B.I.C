@@ -21,10 +21,6 @@ import {
 
 export default function ReportesPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("mes")
-  const [reporteFinanciero, setReporteFinanciero] = useState<any>(null)
-  const [reporteClientes, setReporteClientes] = useState<any>(null)
-  const [ventasPorPlan, setVentasPorPlan] = useState<any[]>([])
-  const [gastosPorCategoria, setGastosPorCategoria] = useState<any[]>([])
   const router = useRouter()
 
   useEffect(() => {
@@ -33,29 +29,36 @@ export default function ReportesPage() {
       router.push("/")
       return
     }
-
-    // Fetch report data from the backend API
-    const fetchReportData = async () => {
-      try {
-        const response = await fetch("/api/reportes")
-        const data = await response.json()
-
-        // Update state with data from the API
-        setReporteFinanciero(data.reporteFinanciero)
-        setReporteClientes(data.reporteClientes)
-        setVentasPorPlan(data.ventasPorPlan || [])
-        setGastosPorCategoria(data.gastosPorCategoria || [])
-      } catch (error) {
-        console.error("Error fetching report data:", error)
-      }
-    }
-
-    fetchReportData()
   }, [router])
 
-  if (!reporteFinanciero || !reporteClientes) {
-    return <div>Loading...</div>
+  const reporteFinanciero = {
+    ingresos: 45231,
+    gastos: 8500,
+    utilidad: 36731,
+    crecimiento: 8.5,
   }
+
+  const reporteClientes = {
+    total: 1234,
+    activos: 1180,
+    nuevos: 45,
+    bajas: 12,
+  }
+
+  const ventasPorPlan = [
+    { plan: "Básico 10MB", clientes: 450, ingresos: 11250 },
+    { plan: "Estándar 25MB", clientes: 380, ingresos: 13300 },
+    { plan: "Premium 50MB", clientes: 280, ingresos: 12600 },
+    { plan: "Ultra 100MB", clientes: 70, ingresos: 4550 },
+  ]
+
+  const gastosPorCategoria = [
+    { categoria: "Proveedores", monto: 4500, porcentaje: 52.9 },
+    { categoria: "Servicios", monto: 1800, porcentaje: 21.2 },
+    { categoria: "Mantenimiento", monto: 1200, porcentaje: 14.1 },
+    { categoria: "Transporte", monto: 600, porcentaje: 7.1 },
+    { categoria: "Oficina", monto: 400, porcentaje: 4.7 },
+  ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -164,8 +167,8 @@ export default function ReportesPage() {
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="financiero">Reporte Financiero</TabsTrigger>
               <TabsTrigger value="clientes">Análisis de Clientes</TabsTrigger>
-            {/*   <TabsTrigger value="ventas">Ventas por Plan</TabsTrigger>
-              <TabsTrigger value="gastos">Análisis de Gastos</TabsTrigger>    */}
+              <TabsTrigger value="ventas">Ventas por Plan</TabsTrigger>
+              <TabsTrigger value="gastos">Análisis de Gastos</TabsTrigger>
             </TabsList>
 
             <TabsContent value="financiero" className="space-y-6">
@@ -297,7 +300,6 @@ export default function ReportesPage() {
                   </CardContent>
                 </Card>
 
-                {/* 
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center space-x-2">
@@ -336,8 +338,7 @@ export default function ReportesPage() {
                       </div>
                     </div>
                   </CardContent>
-                </Card>  
-                 */}
+                </Card>
               </div>
             </TabsContent>
 

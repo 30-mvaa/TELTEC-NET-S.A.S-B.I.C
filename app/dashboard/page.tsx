@@ -336,7 +336,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Quick Stats */}
+        {/* Quick Stats 
         <div
           style={{
             display: "grid",
@@ -395,11 +395,11 @@ export default function Dashboard() {
             </p>
           </div>
         </div>
-
+         */}
         {/* Modules Grid */}
         <div style={{ marginBottom: "2rem" }}>
           <h3 style={{ fontSize: "1.5rem", fontWeight: "600", color: "#0f172a", marginBottom: "1.5rem" }}>
-            Módulos del Sistema
+             Servicios
           </h3>
           <div
             style={{

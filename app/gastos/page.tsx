@@ -258,7 +258,21 @@ export default function GastosPage() {
             {/* Tabla Gastos */}
             <Card><CardHeader><CardTitle>Registro de Gastos ({filtered.length})</CardTitle></CardHeader><CardContent>
               <Table><TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Descripción</TableHead><TableHead>Categoría</TableHead><TableHead>Proveedor</TableHead><TableHead>Método</TableHead><TableHead>Monto</TableHead><TableHead>Usuario</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
-                <TableBody>{filtered.map(g=><TableRow key={g.id}><TableCell>{g.fecha_gasto}</TableCell><TableCell className="max-w-xs truncate">{g.descripcion}</TableCell><TableCell><Badge variant="outline">{g.categoria}</Badge></TableCell><TableCell>{g.proveedor}</TableCell><TableCell><Badge variant="secondary">{g.metodo_pago}</Badge></TableCell><TableCell className="text-red-600 font-semibold">${g.monto.toFixed(2)}</TableCell><TableCell>{g.usuario_nombre}</TableCell><TableCell className="flex space-x-2"><Button size="sm" variant="outline" onClick={()=>openEdit(g)}><Edit/></Button><Button size="sm" variant="outline" onClick={()=>handleDelete(g.id)} className="text-red-600"><Trash2/></Button></TableCell></TableRow>)}</TableBody>
+                <TableBody>{filtered.map(g=><TableRow key={g.id}><TableCell>{g.fecha_gasto}</TableCell>
+                <TableCell className="max-w-xs truncate">{g.descripcion}</TableCell>
+                <TableCell><Badge variant="outline">{g.categoria}</Badge></TableCell>
+                <TableCell>{g.proveedor}</TableCell><TableCell><Badge variant="secondary">{g.metodo_pago}</Badge></TableCell>
+                <TableCell className="text-red-600 font-semibold">${g.monto.toFixed(2)}</TableCell>
+                <TableCell>{g.usuario_nombre}</TableCell>
+                <TableCell className="flex space-x-2"><Button size="sm" variant="outline" onClick={()=>openEdit(g)}><Edit/>
+                 </Button>
+                {/* 
+                <Button size="sm" variant="outline" onClick={()=>handleDelete(g.id)} className="text-red-600"><Trash2/>
+                </Button>   
+                */} 
+              </TableCell>
+              </TableRow>)}
+              </TableBody>
               </Table>
             </CardContent></Card>
           </TabsContent>

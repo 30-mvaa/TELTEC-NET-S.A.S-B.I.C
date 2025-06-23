@@ -151,4 +151,13 @@ export class ClienteModel {
     `)
     return result.rows[0]
   }
+
+  static async getEstadistica() {
+    const result = await query(`
+      SELECT tipo_plan, COUNT(*) AS clientes, SUM(precio_plan) AS ingresos
+      FROM public.clientes
+      GROUP BY tipo_plan
+    `)
+    return result.rows[0]
+  }
 }
