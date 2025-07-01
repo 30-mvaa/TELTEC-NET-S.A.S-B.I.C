@@ -20,6 +20,7 @@ export interface Pago {
 
 export class PagoModel {
   static async getAll(): Promise<Pago[]> {
+    
     const res = await query(`
       SELECT
         p.id,

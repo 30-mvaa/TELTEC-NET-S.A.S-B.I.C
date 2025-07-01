@@ -91,26 +91,27 @@ export class GastoModel {
   }
 
   static async delete(id: number): Promise<boolean> {
-    const result = await query("DELETE FROM gastos WHERE id = $1", [id])
-    return result.rowCount > 0
-  }
+  const result = await query("DELETE FROM gastos WHERE id = $1", [id])
+  return (result.rowCount ?? 0) > 0
+}
 
-  static async getEstadisticas() {
-    const result = await query(`
-      SELECT 
-        COUNT(*) as total_gastos,
-        SUM(monto) as total_gastado,
-        AVG(monto) as promedio_gasto,
-        COUNT(CASE WHEN DATE_PART('month', fecha_gasto) = DATE_PART('month', CURRENT_DATE) 
-                   AND DATE_PART('year', fecha_gasto) = DATE_PART('year', CURRENT_DATE) 
-                   THEN 1 END) as gastos_mes_actual,
-        SUM(CASE WHEN DATE_PART('month', fecha_gasto) = DATE_PART('month', CURRENT_DATE) 
-                 AND DATE_PART('year', fecha_gasto) = DATE_PART('year', CURRENT_DATE) 
-                 THEN monto ELSE 0 END) as gastado_mes_actual
-      FROM gastos
-    `)
-    return result.rows[0]
-  }
+  static async getEstadisticas({ month, year }: { month: string; year: string }) {
+      const result = await query(`
+        SELECT 
+          COUNT(*) as total_gastos,
+          SUM(monto) as total_gastado,
+          AVG(monto) as promedio_gasto,
+          COUNT(CASE WHEN DATE_PART('month', fecha_gasto) = $1 
+                    AND DATE_PART('year', fecha_gasto) = $2 
+                    THEN 1 END) as gastos_mes_actual,
+          SUM(CASE WHEN DATE_PART('month', fecha_gasto) = $1 
+                  AND DATE_PART('year', fecha_gasto) = $2 
+                  THEN monto ELSE 0 END) as gastado_mes_actual
+        FROM gastos
+      `, [month, year]);
+      return result.rows[0];
+    }
+
 
   static async getGastosPorCategoria() {
     const result = await query(`

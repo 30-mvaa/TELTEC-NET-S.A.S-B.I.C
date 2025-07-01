@@ -273,7 +273,7 @@ export default function RecaudacionPage() {
             <div className="text-sm">Total Recaudado</div>
           </div>
         </Card>
-        <Card className="bg-blue-500 text-white flex items-center px-6 py-4">
+        <Card className="bg-blue-500 text-green flex items-center px-6 py-4">
           <Calendar className="h-6 w-6 mr-3" />
           <div>
             <div className="text-2xl font-bold">{stats.pagosHoy}</div>

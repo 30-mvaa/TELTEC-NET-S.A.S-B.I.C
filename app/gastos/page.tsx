@@ -57,7 +57,7 @@ export default function GastosPage() {
     descripcion: "",
     categoria: "",
     monto: "",
-    fecha_gasto: "",
+    fecha_gasto: new Date().toISOString().slice(0, 10), // Formato YYYY-MM-DD
     proveedor: "",
     metodo_pago: "",
     comprobante_url: "",
@@ -76,31 +76,33 @@ export default function GastosPage() {
 
   // Carga desde API con filtros
   const loadGastos = async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (searchTerm) params.set("search", searchTerm)
-      if (filterCategoria !== "todos") params.set("categoria", filterCategoria)
-      if (filterMetodo !== "todos") params.set("metodo_pago", filterMetodo)
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (searchTerm) params.set("search", searchTerm); // Búsqueda por término
+        if (filterCategoria !== "todos") params.set("categoria", filterCategoria); // Filtro por categoría
+        if (filterMetodo !== "todos") params.set("metodo_pago", filterMetodo); // Filtro por método de pago
 
-      const res = await fetch(`/api/gastos?${params.toString()}`)
-      const json = await res.json()
-      if (res.ok && json.success && Array.isArray(json.data)) {
-        const parsed: Gasto[] = json.data.map((g: any) => ({
-          ...g,
-          monto: typeof g.monto === 'string' ? parseFloat(g.monto) : g.monto,
-        }))
-        setGastos(parsed)
-        setError(null)
-      } else {
-        setError(json.message || "Error cargando gastos")
+        const res = await fetch(`/api/gastos?${params.toString()}`);
+        const json = await res.json();
+        if (res.ok && json.success && Array.isArray(json.data)) {
+          const parsed: Gasto[] = json.data.map((g: any) => ({
+            ...g,
+            monto: typeof g.monto === 'string' ? parseFloat(g.monto) : g.monto,
+          }));
+          setGastos(parsed);
+          setError(null);
+        } else {
+          setError(json.message || "Error cargando gastos");
+        }
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
       }
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
     }
-  }
+
+    
 
   useEffect(() => {
     const raw = localStorage.getItem("user")
@@ -168,6 +170,9 @@ export default function GastosPage() {
     else alert(json.message)
   }
 
+  
+
+
   // Exportar CSV
   const exportarReporte = () => {
     const csv = [
@@ -216,8 +221,8 @@ export default function GastosPage() {
                   <div><Label htmlFor="descripcion">Descripción</Label><Input id="descripcion" required value={formData.descripcion} onChange={e=>setFormData({...formData,descripcion:e.target.value})}/></div>
                   <div><Label htmlFor="categoria">Categoría</Label><Select value={formData.categoria} onValueChange={v=>setFormData({...formData,categoria:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{categorias.map(c=><SelectItem key={c.nombre} value={c.nombre}>{c.nombre}</SelectItem>)}</SelectContent></Select></div>
                   <div><Label htmlFor="monto">Monto</Label><Input id="monto" type="number" step="0.01" required value={formData.monto} onChange={e=>setFormData({...formData,monto:e.target.value})}/></div>
-                  <div><Label htmlFor="fecha_gasto">Fecha del Gasto</Label><Input id="fecha_gasto" type="date" required value={formData.fecha_gasto} onChange={e=>setFormData({...formData,fecha_gasto:e.target.value})}/></div>
-                  <div><Label htmlFor="proveedor">Proveedor</Label><Input id="proveedor" required value={formData.proveedor} onChange={e=>setFormData({...formData,proveedor:e.target.value})}/></div>
+                  <div><Label htmlFor="fecha_gasto">Fecha del Gasto</Label> <Input id="fecha_gasto" type="date" required value={formData.fecha_gasto} disabled onChange={e => setFormData({ ...formData, fecha_gasto: e.target.value })} /></div>
+                  <div><Label htmlFor="proveedor">Lugar</Label><Input id="proveedor" required value={formData.proveedor} onChange={e=>setFormData({...formData,proveedor:e.target.value})}/></div>
                   <div><Label htmlFor="metodo_pago">Método de Pago</Label><Select value={formData.metodo_pago} onValueChange={v=>setFormData({...formData,metodo_pago:v})}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{['Efectivo','Transferencia','Tarjeta','Cheque'].map(m=><SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent></Select></div>
                   <div><Label htmlFor="comprobante_url">URL del Comprobante</Label><Input id="comprobante_url" type="url" value={formData.comprobante_url} onChange={e=>setFormData({...formData,comprobante_url:e.target.value})}/></div>
                   <div className="flex justify-end space-x-2"><Button variant="outline" type="button" onClick={()=>{setIsDialogOpen(false);setEditingGasto(null)}}>Cancelar</Button><Button type="submit">Guardar</Button></div>
@@ -245,19 +250,69 @@ export default function GastosPage() {
 
           <TabsContent value="gastos" className="space-y-4">
             {/* Search & Filters */}
-            <Card><CardContent className="flex flex-col md:flex-row gap-4 items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 text-gray-400"/>
-                <Input placeholder="Buscar por descripción o proveedor..." className="pl-10" value={searchTerm} onChange={(e: ChangeEvent<HTMLInputElement>)=>setSearchTerm(e.target.value)} onKeyDown={e=>e.key==='Enter'&&loadGastos()}/>
-              </div>
-              <Button onClick={loadGastos}>Buscar</Button>
-              <Select value={filterCategoria} onValueChange={v=>{setFilterCategoria(v);}}><SelectTrigger><SelectValue placeholder="Todas las categorías"/></SelectTrigger><SelectContent><SelectItem value="todos">Todas las categorías</SelectItem>{categorias.map(c=><SelectItem key={c.nombre} value={c.nombre}>{c.nombre}</SelectItem>)}</SelectContent></Select>
-              <Select value={filterMetodo} onValueChange={v=>{setFilterMetodo(v);}}><SelectTrigger><SelectValue placeholder="Todos los métodos"/></SelectTrigger><SelectContent><SelectItem value="todos">Todos los métodos</SelectItem>{['Efectivo','Transferencia','Tarjeta','Cheque'].map(m=><SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent></Select>
-            </CardContent></Card>
+            <Card>
+              <CardContent className="flex flex-col md:flex-row gap-4 items-center">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-3 text-gray-400" />
+                  <Input
+                    placeholder="Buscar por descripción o proveedor..."
+                    className="pl-10"
+                    value={searchTerm}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                      setSearchTerm(e.target.value); // Actualiza el estado de la búsqueda
+                      loadGastos(); // Ejecuta la búsqueda automáticamente al escribir
+                    }}
+                    onKeyDown={e => e.key === 'Enter' && loadGastos()} // Permite buscar con Enter
+                  />
+                </div>
+                <Button onClick={loadGastos}>Buscar</Button> {/* Botón de búsqueda manual */}
+                {/* Filtro por Categoría */}
+                <Select
+                  value={filterCategoria}
+                  onValueChange={v => {
+                    setFilterCategoria(v);
+                    loadGastos(); // Cargar los gastos cuando se cambia el filtro de categoría
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todas las categorías" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todas las categorías</SelectItem>
+                    {categorias.map(c => (
+                      <SelectItem key={c.nombre} value={c.nombre}>
+                        {c.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {/* Filtro por Método de Pago */}
+                <Select
+                  value={filterMetodo}
+                  onValueChange={v => {
+                    setFilterMetodo(v);
+                    loadGastos(); // Cargar los gastos cuando se cambia el filtro de método de pago
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todos los métodos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos los métodos</SelectItem>
+                    {['Efectivo', 'Transferencia', 'Tarjeta', 'Cheque'].map(m => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
+
 
             {/* Tabla Gastos */}
             <Card><CardHeader><CardTitle>Registro de Gastos ({filtered.length})</CardTitle></CardHeader><CardContent>
-              <Table><TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Descripción</TableHead><TableHead>Categoría</TableHead><TableHead>Proveedor</TableHead><TableHead>Método</TableHead><TableHead>Monto</TableHead><TableHead>Usuario</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
+              <Table><TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Descripción</TableHead><TableHead>Categoría</TableHead><TableHead>Lugar</TableHead><TableHead>Método</TableHead><TableHead>Monto</TableHead><TableHead>Usuario</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader>
                 <TableBody>{filtered.map(g=><TableRow key={g.id}><TableCell>{g.fecha_gasto}</TableCell>
                 <TableCell className="max-w-xs truncate">{g.descripcion}</TableCell>
                 <TableCell><Badge variant="outline">{g.categoria}</Badge></TableCell>
@@ -266,10 +321,10 @@ export default function GastosPage() {
                 <TableCell>{g.usuario_nombre}</TableCell>
                 <TableCell className="flex space-x-2"><Button size="sm" variant="outline" onClick={()=>openEdit(g)}><Edit/>
                  </Button>
-                {/* 
+                 
                 <Button size="sm" variant="outline" onClick={()=>handleDelete(g.id)} className="text-red-600"><Trash2/>
                 </Button>   
-                */} 
+                
               </TableCell>
               </TableRow>)}
               </TableBody>
