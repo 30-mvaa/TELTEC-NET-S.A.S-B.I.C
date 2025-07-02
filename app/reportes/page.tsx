@@ -167,6 +167,56 @@ export default function ReportesPage() {
     setReportType("general")
   }
 
+  useEffect(() => {
+  // Obtener los datos del gráfico
+  const fetchReporteFinanciero = async () => {
+    try {
+      const response = await fetch('/api/reportes/financieros')  // Cambiar a la ruta adecuada para obtener los datos
+      const data = await response.json()
+
+      // Actualizar los datos del reporte financiero y de clientes
+      setReporteData((prevData) => ({
+        ...prevData,
+        reporteFinanciero: {
+          ingresos: data.ingresos,
+          gastos: data.gastos,
+          utilidad: data.utilidad,
+          crecimiento: data.crecimiento,
+        },
+        reporteClientes: {
+          activos: data.activos,
+          total: data.totalClientes,
+          nuevos: data.nuevosClientes,
+          bajas: data.bajasClientes,
+        }
+      }))
+    } catch (error) {
+      console.error("Error al cargar datos del reporte financiero:", error)
+    }
+  }
+
+  fetchReporteFinanciero()
+}, [])
+
+const [datosEstadisticos, setDatosEstadisticos] = useState<ReporteData>({
+  reporteFinanciero: { ingresos: 0, gastos: 0, utilidad: 0, crecimiento: 0 },
+  reporteClientes:  { activos: 0, total: 0, nuevos: 0, bajas: 0 }
+})
+
+useEffect(() => {
+  const fetchDatosEstadisticos = async () => {
+    try {
+      const res = await fetch('/api/reportes/estadisticos') // <- debes crear esta ruta
+      const data = await res.json()
+      setDatosEstadisticos(data)
+    } catch (err) {
+      console.error("Error al obtener datos estáticos", err)
+    }
+  }
+
+  fetchDatosEstadisticos()
+}, [])
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -204,6 +254,18 @@ export default function ReportesPage() {
               </Button>
             </div>
           </div>
+          aui estos deben quedarse estaticos 
+          
+          {/* Reporte Total de Pagos, Gastos y Utilidad - ESTÁTICOS */}
+          
+           
+
+
+              
+
+
+
+
 
           {/* Panel de Filtros Mejorado */}
           <Card className="mb-6">
@@ -304,7 +366,7 @@ export default function ReportesPage() {
               </CardContent>
             </Card>
           )}
-
+        aqui estos fraficos deben cambiar segun el filtrado 
           {/* KPI Cards Mejoradas */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white hover:shadow-lg transition-shadow">

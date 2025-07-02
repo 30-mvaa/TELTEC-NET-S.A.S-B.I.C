@@ -109,14 +109,15 @@ export default function Dashboard() {
             stats: `${stats.notificacionesPendientes} pendientes`,
             icon: "💬",
           },
-          {
+          
+          /*{
             name: "Configuración",
             href: "/configuracion",
             description: "Configuración del sistema",
             color: "linear-gradient(135deg, #6b7280, #4b5563)",
             stats: "Sistema configurado",
-            icon: "⚙️",
-          },
+           icon: "⚙️",
+          },*/
         ]
       case "economia":
         return [
