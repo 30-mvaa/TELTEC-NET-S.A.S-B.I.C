@@ -1,20 +1,52 @@
-"use client"
-
-import type React from "react"
-
-import { useState, useEffect } from "react"
+"use client";
+import React, { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select"
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table"
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Plus, Search, Send, MessageSquare, Bell, Clock, CheckCircle, XCircle, Phone } from "lucide-react"
+import {
+  ArrowLeft,
+  Plus,
+  Search,
+  Send,
+  MessageSquare,
+  Bell,
+  Clock,
+  CheckCircle,
+  XCircle,
+  Phone,
+  Users,
+  AlertTriangle,
+  Calendar,
+  Zap,
+} from "lucide-react"
 
 interface Notificacion {
   id: number
@@ -29,203 +61,290 @@ interface Notificacion {
   fecha_creacion: string
 }
 
+interface ClienteConPago {
+  id: number
+  nombres: string
+  apellidos: string
+  telefono: string
+  email?: string
+  precio_plan: number
+  dias_desde_registro: number
+  dias_sin_pago: number
+  debe_pagar: boolean
+  estado_pago: 'al_dia' | 'proximo_vencimiento' | 'vencido' | 'corte_pendiente'
+}
+
+interface Estadisticas {
+  total: number
+  pendientes: number
+  enviadas: number
+  fallidas: number
+  whatsapp: number
+  email: number
+  sms: number
+}
+
+// --- API HELPERS ---
+async function fetchNotificaciones(): Promise<Notificacion[]> {
+  const res = await fetch("/api/notificaciones")
+  if (res.status === 401) throw new Error("UNAUTHORIZED")
+  if (!res.ok) throw new Error("FETCH_ERROR")
+  return res.json()
+}
+
+async function fetchClientes(): Promise<ClienteConPago[]> {
+  const res = await fetch("/api/notificaciones/clientes")
+  if (!res.ok) throw new Error("FETCH_ERROR")
+  return res.json()
+}
+
+async function fetchEstadisticas(): Promise<Estadisticas> {
+  const res = await fetch("/api/notificaciones/estadisticas")
+  if (!res.ok) throw new Error("FETCH_ERROR")
+  return res.json()
+}
+
+async function enviarWhatsAppApi(to: string, mensaje: string) {
+  const res = await fetch("/api/notificaciones/send-whatsapp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, body: mensaje }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || "Error al enviar WhatsApp");
+  }
+}
+
+async function procesarNotificaciones() {
+  const res = await fetch("/api/notificaciones/procesar", { method: "POST" });
+  if (!res.ok) throw new Error("Error al procesar notificaciones");
+  return res.json();
+}
+
+async function enviarNotificacionMasiva(tipo: string, mensaje: string) {
+  const res = await fetch("/api/notificaciones/masiva", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tipo, mensaje }),
+  });
+  if (!res.ok) throw new Error("Error al enviar notificación masiva");
+  return res.json();
+}
+
 export default function NotificacionesPage() {
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
+  const [clientes, setClientes] = useState<ClienteConPago[]>([])
+  const [estadisticas, setEstadisticas] = useState<Estadisticas | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
-  const [filterTipo, setFilterTipo] = useState<string>("todos")
-  const [filterEstado, setFilterEstado] = useState<string>("todos")
+  const [filterTipo, setFilterTipo] = useState<Notificacion["tipo"] | "todos">("todos")
+  const [filterEstado, setFilterEstado] = useState<Notificacion["estado"] | "todos">("todos")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [formData, setFormData] = useState({
-    cliente_nombre: "",
-    cliente_telefono: "",
-    tipo: "pago_proximo" as const,
+  const [isMasivaDialogOpen, setIsMasivaDialogOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [formData, setFormData] = useState<{
+    cliente_id: number | null
+    tipo: Notificacion["tipo"]
+    mensaje: string
+    canal: Notificacion["canal"]
+  }>({
+    cliente_id: null,
+    tipo: "pago_proximo",
     mensaje: "",
-    canal: "whatsapp" as const,
+    canal: "whatsapp",
+  })
+  const [masivaData, setMasivaData] = useState<{
+    tipo: Notificacion["tipo"]
+    mensaje: string
+  }>({
+    tipo: "promocion",
+    mensaje: "",
   })
   const router = useRouter()
 
   const tiposNotificacion = [
-    { valor: "pago_proximo", label: "Pago Próximo", color: "bg-yellow-100 text-yellow-800" },
-    { valor: "pago_vencido", label: "Pago Vencido", color: "bg-red-100 text-red-800" },
-    { valor: "corte_servicio", label: "Corte de Servicio", color: "bg-red-100 text-red-800" },
-    { valor: "promocion", label: "Promoción", color: "bg-blue-100 text-blue-800" },
-    { valor: "mantenimiento", label: "Mantenimiento", color: "bg-purple-100 text-purple-800" },
-  ]
+    { valor: "pago_proximo", label: "Pago Próximo", color: "bg-yellow-100 text-yellow-800", icon: Calendar },
+    { valor: "pago_vencido", label: "Pago Vencido", color: "bg-red-100 text-red-800", icon: AlertTriangle },
+    { valor: "corte_servicio", label: "Corte Servicio", color: "bg-red-100 text-red-800", icon: Zap },
+    { valor: "promocion", label: "Promoción", color: "bg-blue-100 text-blue-800", icon: MessageSquare },
+    { valor: "mantenimiento", label: "Mantenimiento", color: "bg-purple-100 text-purple-800", icon: Clock },
+  ] as const
 
+  const mensajesPredefinidos: Record<Notificacion["tipo"], string> = {
+    pago_proximo: "🔔 Estimado cliente, se aproxima la fecha de pago de su servicio de internet. Por favor acérquese a cancelar. ¡Gracias por su preferencia! - TelTec",
+    pago_vencido: "⚠️ Estimado cliente, su pago está vencido. Su servicio de internet será posteriormente cortado. Acérquese a cancelar el servicio para restablecer la conexión. - TelTec",
+    corte_servicio: "🚨 AVISO IMPORTANTE: Su servicio de internet será suspendido por falta de pago. Comuníquese inmediatamente con nosotros para evitar la suspensión. TelTec",
+    promocion: "🎉 ¡Oferta especial! Consulte nuestras promociones de internet. ¡No se pierda esta oportunidad! - TelTec",
+    mantenimiento: "🔧 Mantenimiento programado en su sector. Le informaremos cuando esté completado. Gracias por su comprensión. - TelTec",
+  }
+
+  // Carga inicial
   useEffect(() => {
-    // Verificar autenticación
-    const userData = localStorage.getItem("user")
-    if (!userData) {
-      router.push("/")
-      return
-    }
+    cargarDatos()
+  }, [])
 
-    // Cargar notificaciones de ejemplo
-    const notificacionesEjemplo: Notificacion[] = [
-      {
-        id: 1,
-        cliente_id: 1,
-        cliente_nombre: "Juan Carlos Pérez",
-        cliente_telefono: "0999123456",
-        tipo: "pago_vencido",
-        mensaje:
-          "Estimado cliente, su pago está vencido. Por favor regularice su situación para evitar la suspensión del servicio.",
-        estado: "pendiente",
-        canal: "whatsapp",
-        fecha_creacion: "2024-06-13",
-      },
-      {
-        id: 2,
-        cliente_id: 2,
-        cliente_nombre: "María Elena Rodríguez",
-        cliente_telefono: "0998765432",
-        tipo: "pago_proximo",
-        mensaje:
-          "Recordatorio: Su pago vence en 3 días (16/06/2024). Puede realizar el pago en nuestras oficinas o por transferencia.",
-        fecha_envio: "2024-06-13",
-        estado: "enviado",
-        canal: "whatsapp",
-        fecha_creacion: "2024-06-13",
-      },
-      {
-        id: 3,
-        cliente_id: 3,
-        cliente_nombre: "Carlos Alberto Mendoza",
-        cliente_telefono: "0997654321",
-        tipo: "promocion",
-        mensaje: "¡Oferta especial! Upgrade a nuestro plan Premium 50MB por solo $5 adicionales este mes. ¡Aprovecha!",
-        fecha_envio: "2024-06-12",
-        estado: "enviado",
-        canal: "whatsapp",
-        fecha_creacion: "2024-06-12",
-      },
-      {
-        id: 4,
-        cliente_id: 4,
-        cliente_nombre: "Ana Sofía Vargas",
-        cliente_telefono: "0996543210",
-        tipo: "corte_servicio",
-        mensaje:
-          "AVISO IMPORTANTE: Su servicio será suspendido mañana por falta de pago. Contacte inmediatamente para evitar el corte.",
-        estado: "fallido",
-        canal: "whatsapp",
-        fecha_creacion: "2024-06-11",
-      },
-    ]
-    setNotificaciones(notificacionesEjemplo)
-  }, [router])
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
-    const nuevaNotificacion: Notificacion = {
-      id: Date.now(),
-      cliente_id: Math.floor(Math.random() * 1000),
-      cliente_nombre: formData.cliente_nombre,
-      cliente_telefono: formData.cliente_telefono,
-      tipo: formData.tipo,
-      mensaje: formData.mensaje,
-      estado: "pendiente",
-      canal: formData.canal,
-      fecha_creacion: new Date().toISOString().split("T")[0],
-    }
-
-    setNotificaciones([nuevaNotificacion, ...notificaciones])
-    setIsDialogOpen(false)
-    setFormData({
-      cliente_nombre: "",
-      cliente_telefono: "",
-      tipo: "pago_proximo",
-      mensaje: "",
-      canal: "whatsapp",
-    })
-  }
-
-  const enviarNotificacion = async (id: number) => {
+  const cargarDatos = async () => {
     try {
-      // Simular envío
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      setNotificaciones(
-        notificaciones.map((notif) =>
-          notif.id === id
-            ? {
-                ...notif,
-                estado: "enviado" as const,
-                fecha_envio: new Date().toISOString().split("T")[0],
-              }
-            : notif,
-        ),
-      )
-
-      alert("Notificación enviada exitosamente")
-    } catch (error) {
-      setNotificaciones(
-        notificaciones.map((notif) => (notif.id === id ? { ...notif, estado: "fallido" as const } : notif)),
-      )
-      alert("Error al enviar la notificación")
-    }
-  }
-
-  const enviarMasivo = async () => {
-    const pendientes = notificaciones.filter((n) => n.estado === "pendiente")
-    if (pendientes.length === 0) {
-      alert("No hay notificaciones pendientes")
-      return
-    }
-
-    if (confirm(`¿Enviar ${pendientes.length} notificaciones pendientes?`)) {
-      for (const notif of pendientes) {
-        await enviarNotificacion(notif.id)
-        await new Promise((resolve) => setTimeout(resolve, 500)) // Delay entre envíos
+      setLoading(true)
+      const [notifData, clientesData, statsData] = await Promise.all([
+        fetchNotificaciones(),
+        fetchClientes(),
+        fetchEstadisticas()
+      ])
+      setNotificaciones(notifData)
+      setClientes(clientesData)
+      setEstadisticas(statsData)
+    } catch (err: any) {
+      if (err.message === "UNAUTHORIZED") {
+        router.push("/")
+      } else {
+        console.error(err)
+        setError("No se pudieron cargar los datos. Intente más tarde.")
       }
+    } finally {
+      setLoading(false)
     }
   }
 
-  const filteredNotificaciones = notificaciones.filter((notif) => {
-    const matchesSearch =
-      notif.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      notif.mensaje.toLowerCase().includes(searchTerm.toLowerCase())
+  // Crear nueva notificación
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formData.cliente_id) return
 
-    const matchesTipo = filterTipo === "todos" || notif.tipo === filterTipo
-    const matchesEstado = filterEstado === "todos" || notif.estado === filterEstado
+    try {
+      const res = await fetch("/api/notificaciones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      })
+      if (!res.ok) throw new Error("Error al crear notificación")
+      
+      await cargarDatos()
+      setIsDialogOpen(false)
+      setFormData({
+        cliente_id: null,
+        tipo: "pago_proximo",
+        mensaje: "",
+        canal: "whatsapp",
+      })
+    } catch (error) {
+      console.error("Error:", error)
+      setError("Error al crear la notificación")
+    }
+  }
 
-    return matchesSearch && matchesTipo && matchesEstado
+  // Enviar notificación masiva
+  const handleMasivaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      setLoading(true)
+      const result = await enviarNotificacionMasiva(masivaData.tipo, masivaData.mensaje)
+      alert(`Se crearon ${result.notificaciones_creadas} notificaciones para envío`)
+      await cargarDatos()
+      setIsMasivaDialogOpen(false)
+      setMasivaData({
+        tipo: "promocion",
+        mensaje: "",
+      })
+    } catch (error) {
+      console.error("Error:", error)
+      setError("Error al crear notificaciones masivas")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Enviar una notificación
+  const enviarNotificacion = async (id: number) => {
+    const notif = notificaciones.find((n) => n.id === id);
+    if (!notif) return;
+
+    try {
+      if (notif.canal === 'whatsapp') {
+        await enviarWhatsAppApi(notif.cliente_telefono, notif.mensaje);
+      }
+      await fetch(`/api/notificaciones/${id}/mark-enviado`, { method: "PATCH" });
+      await cargarDatos()
+    } catch (error) {
+      console.error("Error:", error)
+      setError("Error al enviar la notificación")
+    }
+  }
+
+  // Procesar todas las notificaciones
+  const handleProcesarNotificaciones = async () => {
+    try {
+      setLoading(true)
+      const result = await procesarNotificaciones()
+      alert(`Procesamiento completado: ${result.procesadas} enviadas, ${result.errores} errores`)
+      await cargarDatos()
+    } catch (error) {
+      console.error("Error:", error)
+      setError("Error al procesar notificaciones")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Filtrar notificaciones
+  const filteredNotificaciones = notificaciones.filter((n) => {
+    const matchSearch = n.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                       n.mensaje.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchTipo = filterTipo === "todos" || n.tipo === filterTipo
+    const matchEstado = filterEstado === "todos" || n.estado === filterEstado
+    return matchSearch && matchTipo && matchEstado
   })
 
-  const getEstadoBadge = (estado: string) => {
-    switch (estado) {
-      case "enviado":
-        return <Badge className="bg-green-100 text-green-800">Enviado</Badge>
-      case "pendiente":
-        return <Badge className="bg-yellow-100 text-yellow-800">Pendiente</Badge>
-      case "fallido":
-        return <Badge className="bg-red-100 text-red-800">Fallido</Badge>
-      default:
-        return <Badge>{estado}</Badge>
+  // Badges
+  const getEstadoBadge = (estado: Notificacion["estado"]) => {
+    const configs = {
+      enviado: { color: "bg-green-100 text-green-800", icon: CheckCircle },
+      pendiente: { color: "bg-yellow-100 text-yellow-800", icon: Clock },
+      fallido: { color: "bg-red-100 text-red-800", icon: XCircle }
     }
+    const config = configs[estado]
+    const Icon = config.icon
+    return (
+      <Badge className={config.color}>
+        <Icon className="h-3 w-3 mr-1" />
+        {estado.charAt(0).toUpperCase() + estado.slice(1)}
+      </Badge>
+    )
   }
 
-  const getTipoBadge = (tipo: string) => {
-    const tipoConfig = tiposNotificacion.find((t) => t.valor === tipo)
-    return <Badge className={tipoConfig?.color}>{tipoConfig?.label}</Badge>
+  const getTipoBadge = (tipo: Notificacion["tipo"]) => {
+    const config = tiposNotificacion.find((x) => x.valor === tipo)
+    if (!config) return null
+    const Icon = config.icon
+    return (
+      <Badge className={config.color}>
+        <Icon className="h-3 w-3 mr-1" />
+        {config.label}
+      </Badge>
+    )
   }
 
-  const pendientes = notificaciones.filter((n) => n.estado === "pendiente").length
-  const enviadas = notificaciones.filter((n) => n.estado === "enviado").length
-  const fallidas = notificaciones.filter((n) => n.estado === "fallido").length
+  const getEstadoPagoBadge = (estado: string) => {
+    const configs = {
+      al_dia: { color: "bg-green-100 text-green-800", label: "Al día" },
+      proximo_vencimiento: { color: "bg-yellow-100 text-yellow-800", label: "Próximo a vencer" },
+      vencido: { color: "bg-red-100 text-red-800", label: "Vencido" },
+      corte_pendiente: { color: "bg-red-200 text-red-900", label: "Corte pendiente" }
+    }
+    const config = configs[estado as keyof typeof configs] || configs.al_dia
+    return <Badge className={config.color}>{config.label}</Badge>
+  }
 
-  const mensajesPredefinidos = {
-    pago_proximo:
-      "Recordatorio: Su pago vence en [DIAS] días. Fecha límite: [FECHA]. Puede realizar el pago en nuestras oficinas o por transferencia.",
-    pago_vencido:
-      "Estimado cliente, su pago está vencido desde el [FECHA]. Por favor regularice su situación para evitar la suspensión del servicio.",
-    corte_servicio:
-      "AVISO IMPORTANTE: Su servicio será suspendido por falta de pago. Contacte inmediatamente al 0999859689 para evitar el corte.",
-    promocion:
-      "¡Oferta especial! Tenemos promociones disponibles para mejorar su plan de internet. ¡Consulte por WhatsApp!",
-    mantenimiento:
-      "Informamos que realizaremos mantenimiento en su sector el [FECHA] de [HORA_INICIO] a [HORA_FIN]. Disculpe las molestias.",
+  if (loading && !estadisticas) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-slate-600">Cargando sistema de notificaciones...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -245,237 +364,255 @@ export default function NotificacionesPage() {
               </Button>
               <div>
                 <h1 className="text-3xl font-bold text-slate-900">Sistema de Notificaciones</h1>
-                <p className="text-slate-600">WhatsApp, Email y SMS automatizados</p>
+                <p className="text-slate-600">WhatsApp automatizado para TelTec</p>
               </div>
             </div>
-
             <div className="flex space-x-2">
               <Button
                 variant="outline"
-                onClick={enviarMasivo}
-                disabled={pendientes === 0}
+                onClick={handleProcesarNotificaciones}
+                disabled={loading}
                 className="flex items-center space-x-2"
               >
                 <Send className="h-4 w-4" />
-                <span>Enviar Pendientes ({pendientes})</span>
+                <span>Procesar Automático</span>
               </Button>
+              <Dialog open={isMasivaDialogOpen} onOpenChange={setIsMasivaDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="flex items-center space-x-2">
+                    <Users className="h-4 w-4" />
+                    <span>Envío Masivo</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Envío Masivo a Todos los Clientes</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleMasivaSubmit} className="space-y-4">
+                    <div>
+                      <Label htmlFor="tipo-masiva">Tipo de Notificación</Label>
+                      <Select
+                        value={masivaData.tipo}
+                        onValueChange={(value) => setMasivaData(prev => ({ 
+                          ...prev, 
+                          tipo: value as Notificacion["tipo"],
+                          mensaje: mensajesPredefinidos[value as Notificacion["tipo"]]
+                        }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tiposNotificacion.map((tipo) => (
+                            <SelectItem key={tipo.valor} value={tipo.valor}>
+                              {tipo.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="mensaje-masiva">Mensaje</Label>
+                      <Textarea
+                        id="mensaje-masiva"
+                        value={masivaData.mensaje}
+                        onChange={(e) => setMasivaData(prev => ({ ...prev, mensaje: e.target.value }))}
+                        placeholder="Escriba el mensaje..."
+                        rows={4}
+                        required
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button type="submit" disabled={loading}>
+                        {loading ? "Creando..." : "Crear Notificaciones"}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="flex items-center space-x-2 bg-green-600 hover:bg-green-700">
+                  <Button className="bg-green-600 hover:bg-green-700 text-white flex items-center space-x-2">
                     <Plus className="h-4 w-4" />
                     <span>Nueva Notificación</span>
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-md">
+                <DialogContent>
                   <DialogHeader>
-                    <DialogTitle className="flex items-center space-x-2">
-                      <MessageSquare className="h-5 w-5" />
-                      <span>Nueva Notificación</span>
-                    </DialogTitle>
+                    <DialogTitle>Nueva Notificación</DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                      <Label htmlFor="cliente_nombre">Nombre del Cliente *</Label>
-                      <Input
-                        id="cliente_nombre"
-                        value={formData.cliente_nombre}
-                        onChange={(e) => setFormData({ ...formData, cliente_nombre: e.target.value })}
-                        required
-                      />
+                      <Label htmlFor="cliente">Cliente</Label>
+                      <Select
+                        value={formData.cliente_id?.toString() || ""}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, cliente_id: parseInt(value) }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar cliente" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clientes.map((cliente) => (
+                            <SelectItem key={cliente.id} value={cliente.id.toString()}>
+                              {cliente.nombres} {cliente.apellidos} - {cliente.telefono}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-
                     <div>
-                      <Label htmlFor="cliente_telefono">Teléfono *</Label>
-                      <Input
-                        id="cliente_telefono"
-                        value={formData.cliente_telefono}
-                        onChange={(e) => setFormData({ ...formData, cliente_telefono: e.target.value })}
-                        placeholder="0999123456"
-                        maxLength={10}
-                        required
-                      />
+                      <Label htmlFor="tipo">Tipo</Label>
+                      <Select
+                        value={formData.tipo}
+                        onValueChange={(value) => setFormData(prev => ({ 
+                          ...prev, 
+                          tipo: value as Notificacion["tipo"],
+                          mensaje: mensajesPredefinidos[value as Notificacion["tipo"]]
+                        }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tiposNotificacion.map((tipo) => (
+                            <SelectItem key={tipo.valor} value={tipo.valor}>
+                              {tipo.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="tipo">Tipo *</Label>
-                        <Select
-                          value={formData.tipo}
-                          onValueChange={(value: any) => {
-                            setFormData({
-                              ...formData,
-                              tipo: value,
-                              mensaje: mensajesPredefinidos[value as keyof typeof mensajesPredefinidos] || "",
-                            })
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {tiposNotificacion.map((tipo) => (
-                              <SelectItem key={tipo.valor} value={tipo.valor}>
-                                {tipo.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="canal">Canal *</Label>
-                        <Select
-                          value={formData.canal}
-                          onValueChange={(value: "whatsapp" | "email" | "sms") =>
-                            setFormData({ ...formData, canal: value })
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                            <SelectItem value="email">Email</SelectItem>
-                            <SelectItem value="sms">SMS</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
                     <div>
-                      <Label htmlFor="mensaje">Mensaje *</Label>
+                      <Label htmlFor="mensaje">Mensaje</Label>
                       <Textarea
                         id="mensaje"
                         value={formData.mensaje}
-                        onChange={(e) => setFormData({ ...formData, mensaje: e.target.value })}
-                        placeholder="Escriba el mensaje a enviar..."
+                        onChange={(e) => setFormData(prev => ({ ...prev, mensaje: e.target.value }))}
+                        placeholder="Escriba el mensaje..."
                         rows={4}
                         required
                       />
-                      <div className="text-xs text-slate-500 mt-1">
-                        Variables disponibles: [DIAS], [FECHA], [HORA_INICIO], [HORA_FIN]
-                      </div>
                     </div>
-
-                    <div className="flex justify-end space-x-2 pt-4">
-                      <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancelar
-                      </Button>
-                      <Button type="submit">Programar Notificación</Button>
-                    </div>
+                    <DialogFooter>
+                      <Button type="submit">Crear Notificación</Button>
+                    </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
             </div>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  Total Notificaciones
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{notificaciones.length}</div>
-                <p className="text-xs opacity-90">Registros en el sistema</p>
+          {/* Error */}
+          {error && (
+            <Card className="mb-6 border-red-200 bg-red-50">
+              <CardContent className="p-4">
+                <p className="text-red-600">{error}</p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setError(null)}
+                  className="mt-2"
+                >
+                  Cerrar
+                </Button>
               </CardContent>
             </Card>
+          )}
 
-            <Card className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                  <Clock className="h-4 w-4 mr-2" />
-                  Pendientes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{pendientes}</div>
-                <p className="text-xs opacity-90">Por enviar</p>
-              </CardContent>
-            </Card>
+          {/* Estadísticas */}
+          {estadisticas && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+              <Card className="bg-blue-600 text-blue">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Total</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{estadisticas.total}</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-yellow-500 text-white">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{estadisticas.pendientes}</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-green-600 text-white">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Enviadas</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{estadisticas.enviadas}</div>
+                </CardContent>
+              </Card>
+              <Card className="bg-red-600 text-white">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Fallidas</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{estadisticas.fallidas}</div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-            <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Enviadas
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{enviadas}</div>
-                <p className="text-xs opacity-90">Exitosas</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                  <XCircle className="h-4 w-4 mr-2" />
-                  Fallidas
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{fallidas}</div>
-                <p className="text-xs opacity-90">Con errores</p>
-              </CardContent>
-            </Card>
-          </div>
-
+          {/* Tabs */}
           <Tabs defaultValue="notificaciones" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="notificaciones">Lista de Notificaciones</TabsTrigger>
-              <TabsTrigger value="plantillas">Plantillas</TabsTrigger>
+            <TabsList className="grid grid-cols-3">
+              <TabsTrigger value="notificaciones">Notificaciones</TabsTrigger>
+              <TabsTrigger value="clientes">Clientes</TabsTrigger>
               <TabsTrigger value="configuracion">Configuración</TabsTrigger>
             </TabsList>
 
             <TabsContent value="notificaciones" className="space-y-4">
-              {/* Search and Filters */}
               <Card>
-                <CardContent className="p-4">
-                  <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 relative">
-                      <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                      <Input
-                        placeholder="Buscar por cliente o mensaje..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
-                    <Select value={filterTipo} onValueChange={setFilterTipo}>
-                      <SelectTrigger className="w-full md:w-48">
-                        <SelectValue placeholder="Tipo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Todos los tipos</SelectItem>
-                        {tiposNotificacion.map((tipo) => (
-                          <SelectItem key={tipo.valor} value={tipo.valor}>
-                            {tipo.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={filterEstado} onValueChange={setFilterEstado}>
-                      <SelectTrigger className="w-full md:w-48">
-                        <SelectValue placeholder="Estado" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todos">Todos los estados</SelectItem>
-                        <SelectItem value="pendiente">Pendientes</SelectItem>
-                        <SelectItem value="enviado">Enviadas</SelectItem>
-                        <SelectItem value="fallido">Fallidas</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <CardContent className="flex flex-col md:flex-row gap-4 p-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                    <Input
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Buscar notificaciones..."
+                      className="pl-10"
+                    />
                   </div>
+                  <Select
+                    value={filterTipo}
+                    onValueChange={(v) => setFilterTipo(v as any)}
+                  >
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos los tipos</SelectItem>
+                      {tiposNotificacion.map((t) => (
+                        <SelectItem key={t.valor} value={t.valor}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={filterEstado}
+                    onValueChange={(v) => setFilterEstado(v as any)}
+                  >
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos los estados</SelectItem>
+                      <SelectItem value="pendiente">Pendientes</SelectItem>
+                      <SelectItem value="enviado">Enviadas</SelectItem>
+                      <SelectItem value="fallido">Fallidas</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </CardContent>
               </Card>
 
-              {/* Notifications Table */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Lista de Notificaciones ({filteredNotificaciones.length})</CardTitle>
+                  <CardTitle>Notificaciones ({filteredNotificaciones.length})</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <Table>
@@ -484,7 +621,6 @@ export default function NotificacionesPage() {
                         <TableHead>Cliente</TableHead>
                         <TableHead>Tipo</TableHead>
                         <TableHead>Mensaje</TableHead>
-                        <TableHead>Canal</TableHead>
                         <TableHead>Estado</TableHead>
                         <TableHead>Fecha</TableHead>
                         <TableHead>Acciones</TableHead>
@@ -494,12 +630,10 @@ export default function NotificacionesPage() {
                       {filteredNotificaciones.map((notif) => (
                         <TableRow key={notif.id}>
                           <TableCell>
-                            <div>
-                              <div className="font-medium">{notif.cliente_nombre}</div>
-                              <div className="text-sm text-slate-500 flex items-center">
-                                <Phone className="h-3 w-3 mr-1" />
-                                {notif.cliente_telefono}
-                              </div>
+                            <div className="font-medium">{notif.cliente_nombre}</div>
+                            <div className="text-sm text-slate-500 flex items-center">
+                              <Phone className="h-3 w-3 mr-1" />
+                              {notif.cliente_telefono}
                             </div>
                           </TableCell>
                           <TableCell>{getTipoBadge(notif.tipo)}</TableCell>
@@ -508,22 +642,17 @@ export default function NotificacionesPage() {
                               {notif.mensaje}
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="capitalize">
-                              {notif.canal}
-                            </Badge>
-                          </TableCell>
                           <TableCell>{getEstadoBadge(notif.estado)}</TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              <div>Creado: {notif.fecha_creacion}</div>
-                              {notif.fecha_envio && <div>Enviado: {notif.fecha_envio}</div>}
-                            </div>
+                          <TableCell className="text-sm">
+                            <div>Creado: {new Date(notif.fecha_creacion).toLocaleDateString()}</div>
+                            {notif.fecha_envio && (
+                              <div>Enviado: {new Date(notif.fecha_envio).toLocaleDateString()}</div>
+                            )}
                           </TableCell>
                           <TableCell>
                             {notif.estado === "pendiente" && (
-                              <Button
-                                size="sm"
+                              <Button 
+                                size="sm" 
                                 onClick={() => enviarNotificacion(notif.id)}
                                 className="flex items-center space-x-1"
                               >
@@ -551,88 +680,83 @@ export default function NotificacionesPage() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="plantillas" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {Object.entries(mensajesPredefinidos).map(([tipo, mensaje]) => {
-                  const tipoConfig = tiposNotificacion.find((t) => t.valor === tipo)
-                  return (
-                    <Card key={tipo}>
-                      <CardHeader>
-                        <CardTitle className="flex items-center space-x-2">
-                          <Bell className="h-5 w-5" />
-                          <span>{tipoConfig?.label}</span>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          <div className="p-3 bg-slate-50 rounded-lg">
-                            <div className="text-sm text-slate-600 whitespace-pre-wrap">{mensaje}</div>
-                          </div>
-                          <Button variant="outline" size="sm" className="w-full">
-                            Editar Plantilla
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
+            <TabsContent value="clientes" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Estado de Pagos de Clientes ({clientes.length})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Teléfono</TableHead>
+                        <TableHead>Plan</TableHead>
+                        <TableHead>Días sin Pago</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Debe Pagar</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {clientes.map((cliente) => (
+                        <TableRow key={cliente.id}>
+                          <TableCell className="font-medium">
+                            {cliente.nombres} {cliente.apellidos}
+                          </TableCell>
+                          <TableCell>{cliente.telefono}</TableCell>
+                          <TableCell>${cliente.precio_plan}</TableCell>
+                          <TableCell>
+                            <span className={cliente.dias_sin_pago > 30 ? "text-red-600 font-semibold" : ""}>
+                              {cliente.dias_sin_pago} días
+                            </span>
+                          </TableCell>
+                          <TableCell>{getEstadoPagoBadge(cliente.estado_pago)}</TableCell>
+                          <TableCell>
+                            {cliente.debe_pagar ? (
+                              <Badge className="bg-red-100 text-red-800">Sí</Badge>
+                            ) : (
+                              <Badge className="bg-green-100 text-green-800">No</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="configuracion" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Configuración de WhatsApp</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Configuración del Sistema</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <Label>Número de WhatsApp Business</Label>
-                      <Input value="0999859689" disabled />
+                      <h3 className="text-lg font-semibold mb-2">Notificaciones Automáticas</h3>
+                      <ul className="space-y-2 text-sm">
+                        <li>• Pagos próximos: 5 días antes (25-29 días)</li>
+                        <li>• Pagos vencidos: Después de 30 días</li>
+                        <li>• Corte de servicio: Después de 35 días</li>
+                      </ul>
                     </div>
                     <div>
-                      <Label>API Token</Label>
-                      <Input type="password" value="••••••••••••••••" disabled />
+                      <h3 className="text-lg font-semibold mb-2">Configuración Twilio</h3>
+                      <ul className="space-y-2 text-sm">
+                        <li>• Account SID: {process.env.TWILIO_ACCOUNT_SID ? "Configurado" : "No configurado"}</li>
+                        <li>• Auth Token: {process.env.TWILIO_AUTH_TOKEN ? "Configurado" : "No configurado"}</li>
+                        <li>• Número WhatsApp: {process.env.TWILIO_PHONE_NUMBER || "No configurado"}</li>
+                      </ul>
                     </div>
-                    <div>
-                      <Label>Estado de la Conexión</Label>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                        <span className="text-sm text-green-600">Conectado</span>
-                      </div>
-                    </div>
-                    <Button variant="outline">Probar Conexión</Button>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Configuración de Email</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label>Email del Sistema</Label>
-                      <Input value="vangamarca4@gmail.com" disabled />
-                    </div>
-                    <div>
-                      <Label>Servidor SMTP</Label>
-                      <Input value="smtp.gmail.com" disabled />
-                    </div>
-                    <div>
-                      <Label>Puerto</Label>
-                      <Input value="587" disabled />
-                    </div>
-                    <div>
-                      <Label>Estado de la Conexión</Label>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                        <span className="text-sm text-green-600">Configurado</span>
-                      </div>
-                    </div>
-                    <Button variant="outline">Probar Email</Button>
-                  </CardContent>
-                </Card>
-              </div>
+                  </div>
+                  <div className="pt-4">
+                    <Button onClick={handleProcesarNotificaciones} disabled={loading}>
+                      {loading ? "Procesando..." : "Ejecutar Proceso Automático"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
         </div>

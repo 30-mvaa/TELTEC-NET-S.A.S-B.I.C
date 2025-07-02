@@ -6,9 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "start-cron": "ts-node scripts/monthlyNotifications.ts"
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.4",
+    "@prisma/client": "^6.10.1",
     "@radix-ui/react-accordion": "^1.1.2",
     "@radix-ui/react-alert-dialog": "^1.0.5",
     "@radix-ui/react-avatar": "^1.0.4",
@@ -27,16 +30,21 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^2.30.0",
+    "dayjs": "^1.11.13",
+    "https-proxy-agent": "^7.0.6",
     "jspdf": "^3.0.1",
     "lucide-react": "^0.263.1",
-    "next": "^14.0.4",
-    "nodemailer": "^7.0.3",
-    "pg": "^8.16.0",
+    "next": "^15.3.4",
+    "next-themes": "^0.4.6",
+    "node-cron": "^4.2.0",
+    "nodemailer": "^7.0.4",
+    "pg": "^8.16.3",
     "react": "^18.3.1",
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^18.3.1",
     "recharts": "^2.15.4",
-    "tailwind-merge": "^2.0.0"
+    "tailwind-merge": "^2.0.0",
+    "twilio": "^5.7.1"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.16",
@@ -46,6 +54,7 @@
     "@types/pg": "^8.15.4",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "@types/twilio": "^3.19.2",
     "autoprefixer": "^10.4.21",
     "eslint": "^8",
     "eslint-config-next": "14.0.4",

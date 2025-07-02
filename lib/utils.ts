@@ -3,6 +3,7 @@
 import bcrypt from "bcryptjs"
 import { clsx } from "clsx"
 
+
 export function cn(...inputs: any[]) {
   return clsx(...inputs)
 }
@@ -13,4 +14,3 @@ export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, salt)
 }
 
-// ✅ Este archivo ahora solo tiene funciones compatibles con cliente/servidor
