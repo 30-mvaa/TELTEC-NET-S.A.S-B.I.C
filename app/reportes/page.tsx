@@ -198,24 +198,6 @@ export default function ReportesPage() {
   fetchReporteFinanciero()
 }, [])
 
-const [datosEstadisticos, setDatosEstadisticos] = useState<ReporteData>({
-  reporteFinanciero: { ingresos: 0, gastos: 0, utilidad: 0, crecimiento: 0 },
-  reporteClientes:  { activos: 0, total: 0, nuevos: 0, bajas: 0 }
-})
-
-useEffect(() => {
-  const fetchDatosEstadisticos = async () => {
-    try {
-      const res = await fetch('/api/reportes/estadisticos') // <- debes crear esta ruta
-      const data = await res.json()
-      setDatosEstadisticos(data)
-    } catch (err) {
-      console.error("Error al obtener datos estáticos", err)
-    }
-  }
-
-  fetchDatosEstadisticos()
-}, [])
 
 
   return (
@@ -254,19 +236,7 @@ useEffect(() => {
               </Button>
             </div>
           </div>
-          aui estos deben quedarse estaticos 
-          
-          {/* Reporte Total de Pagos, Gastos y Utilidad - ESTÁTICOS */}
-          
-           
-
-
-              
-
-
-
-
-
+         
           {/* Panel de Filtros Mejorado */}
           <Card className="mb-6">
             <CardHeader className="pb-3">
@@ -366,7 +336,7 @@ useEffect(() => {
               </CardContent>
             </Card>
           )}
-        aqui estos fraficos deben cambiar segun el filtrado 
+       
           {/* KPI Cards Mejoradas */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white hover:shadow-lg transition-shadow">
@@ -520,3 +490,4 @@ useEffect(() => {
     </div>
   )
 }
+
