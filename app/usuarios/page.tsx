@@ -147,18 +147,19 @@ export default function UsuariosPage() {
 
         <div className="flex space-x-4 overflow-x-auto mb-6">
           {stats.map(s => (
-            <Card key={s.title} className="flex-1">
+            <Card key={s.title} className="flex-1 bg-green-500 text-white">
               <CardHeader><CardTitle className="text-sm">{s.title}</CardTitle></CardHeader>
-              <CardContent><div className={`text-2xl font-bold text-${s.color}-600`}>{s.value}</div></CardContent>
+              <CardContent><div className="text-2xl font-bold text-white">{s.value}</div></CardContent>
             </Card>
           ))}
         </div>
 
         <div className="flex space-x-4 overflow-x-auto mb-8">
           {roles.map(r => (
-            <Card key={r.title} className="flex-1">
+            <Card key={r.title} className="flex-1 bg-gray-700 text-white">
               <CardHeader><CardTitle className="text-sm">{r.title}</CardTitle></CardHeader>
-              <CardContent><div className={`text-2xl font-bold text-${r.color}-600`}>{r.value}</div></CardContent>
+              <CardContent><div className="text-2xl font-bold text-white">{r.value}</div></CardContent>
+              
             </Card>
           ))}
         </div>

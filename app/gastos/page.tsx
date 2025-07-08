@@ -237,7 +237,7 @@ export default function GastosPage() {
           <Card className="bg-red-500 text-white"><CardHeader><CardTitle className="flex items-center"><TrendingDown className="mr-2"/>Total Gastos</CardTitle></CardHeader><CardContent>${total.toLocaleString(undefined,{minimumFractionDigits:2})}</CardContent></Card>
           <Card className="bg-orange-500 text-white"><CardHeader><CardTitle className="flex items-center"><Calendar className="mr-2"/>Gastos del Mes</CardTitle></CardHeader><CardContent>${totalMes.toLocaleString(undefined,{minimumFractionDigits:2})}</CardContent></Card>
           <Card className="bg-purple-500 text-white"><CardHeader><CardTitle className="flex items-center"><Receipt className="mr-2"/>Total Registros</CardTitle></CardHeader><CardContent>{gastos.length}</CardContent></Card>
-          <Card className="bg-blue-500 text-white"><CardHeader><CardTitle className="flex items-center"><FileText className="mr-2"/>Promedio por Gasto</CardTitle></CardHeader><CardContent>${(gastos.length? (total/gastos.length):0).toFixed(2)}</CardContent></Card>
+          <Card className="bg-gray-500 text-white"><CardHeader><CardTitle className="flex items-center"><FileText className="mr-2"/>Promedio por Gasto</CardTitle></CardHeader><CardContent>${(gastos.length? (total/gastos.length):0).toFixed(2)}</CardContent></Card>
         </div>
 
         {/* Tabs */}
@@ -351,7 +351,7 @@ export default function GastosPage() {
           <TabsContent value="reportes" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card><CardHeader><CardTitle>Gastos por Método</CardTitle></CardHeader><CardContent>
-                {['Efectivo','Transferencia','Tarjeta','Cheque'].map(m=>{
+                {['Efectivo','Transferencia'].map(m=>{
                   const byM = gastos.filter(g=>g.metodo_pago===m)
                   const sumM = byM.reduce((s,g)=>s+g.monto,0)
                   const pct = total? (sumM/total)*100:0

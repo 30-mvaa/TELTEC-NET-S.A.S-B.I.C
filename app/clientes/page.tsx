@@ -40,9 +40,9 @@ import { ArrowLeft, Plus, Edit, Trash2 } from "lucide-react"
 
 // Definir planes con precio
 const planes = [
-  { label: "Básico 10MB", precio: 20 },
-  { label: "Estándar 25MB", precio: 35 },
-  { label: "Premium 50MB", precio: 50 },
+  { label: "Plan Básico 15MB", precio: 10 },
+  { label: "Plan Familiar 30MB", precio: 20 },
+  
 ]
 
 interface Cliente {
@@ -361,9 +361,13 @@ export default function ClientesPage() {
                 <Input
                   id="cedula"
                   value={formData.cedula}
-                  onChange={e =>
-                    setFormData({ ...formData, cedula: e.target.value })
-                  }
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^\d*$/.test(value)) {
+                      setFormData({ ...formData, cedula: value });
+                    }
+                  }}
+                  maxLength={10} // Opcional: máximo 10 dígitos
                   required
                   disabled={!!editing}
                 />
@@ -373,23 +377,31 @@ export default function ClientesPage() {
                 <Input
                   id="nombres"
                   value={formData.nombres}
-                  onChange={e =>
-                    setFormData({ ...formData, nombres: e.target.value })
-                  }
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$/.test(value)) {
+                      setFormData({ ...formData, nombres: value });
+                    }
+                  }}
                   required
                 />
               </div>
+
               <div>
                 <Label htmlFor="apellidos">Apellidos</Label>
                 <Input
                   id="apellidos"
                   value={formData.apellidos}
-                  onChange={e =>
-                    setFormData({ ...formData, apellidos: e.target.value })
-                  }
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$/.test(value)) {
+                      setFormData({ ...formData, apellidos: value });
+                    }
+                  }}
                   required
                 />
               </div>
+
               <div>
                 <Label htmlFor="tipo_plan">Plan</Label>
                 <Select
@@ -447,15 +459,27 @@ export default function ClientesPage() {
                     <SelectValue placeholder="Seleccione sector" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Centro">Centro</SelectItem>
-                    <SelectItem value="Norte">Norte</SelectItem>
-                    <SelectItem value="Sur">Sur</SelectItem>
-                    <SelectItem value="Este">Este</SelectItem>
-                    <SelectItem value="Oeste">Oeste</SelectItem>
+                    <SelectItem value="Atu la virgen">Atu la virgen</SelectItem>
+                    <SelectItem value="Cagunapamba">Cagunapamba</SelectItem>
+                    <SelectItem value="Cañar centro">Cañar centro</SelectItem>
+                    <SelectItem value="churu huayco">churu huayco</SelectItem>
+                    <SelectItem value="Cullca loma">Cullca loma</SelectItem>
+                     <SelectItem value="Cullca loma">Ingapirca</SelectItem>
+                    <SelectItem value="Galuay">Galuay</SelectItem>
+                    <SelectItem value="Honorato">Honorato</SelectItem>
+                    <SelectItem value="Mulupata">Mulupata</SelectItem>
+                    <SelectItem value="San jose">San jose</SelectItem>
+                    <SelectItem value="Sisid anejo">Sisid anejo</SelectItem>
+                    <SelectItem value="Sisid Centro">Sisid Centro</SelectItem>
+                    <SelectItem value="Tambo">Tambo</SelectItem>
+                    <SelectItem value="Tambo - Laguna">Tambo - Laguna</SelectItem>
+                    <SelectItem value="Tranca">Tranca</SelectItem>
+                    <SelectItem value="Vende leche">Vende leche</SelectItem>
+
                   </SelectContent>
                 </Select>
               </div>
-              <div>
+            <div>
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
@@ -468,16 +492,23 @@ export default function ClientesPage() {
                   disabled={!!editing}
                 />
               </div>
+
               <div>
                 <Label htmlFor="telefono">Teléfono</Label>
                 <Input
                   id="telefono"
                   value={formData.telefono}
-                  onChange={e =>
-                    setFormData({ ...formData, telefono: e.target.value })
-                  }
+                  onChange={e => {
+                    const value = e.target.value;
+                    if (/^\d*$/.test(value)) {
+                      setFormData({ ...formData, telefono: value });
+                    }
+                  }}
+                  maxLength={10} // Opcional: para limitar a 10 dígitos
+                  required
                 />
               </div>
+
               <div>
                 <Label htmlFor="estado">Estado</Label>
                 <Select

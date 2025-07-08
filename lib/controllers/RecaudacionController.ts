@@ -1,4 +1,3 @@
-// lib/controllers/RecaudacionController.ts
 import { PagoModel } from "@/lib/models/Pago"
 import type { Pago } from "@/lib/models/Pago"
 
@@ -8,6 +7,12 @@ type Stats = {
   promedio_pago: number
   pagos_mes_actual: number
   recaudado_mes_actual: number
+}
+
+function generarNumeroComprobante(codigoEmpresa = "EIDZ"): string {
+  const prefijo = "COMP";
+  const timestamp = Date.now();
+  return `${prefijo}-${timestamp}-${codigoEmpresa}`;
 }
 
 export default class RecaudacionController {
@@ -22,12 +27,16 @@ export default class RecaudacionController {
     metodo_pago: string
     concepto: string
   }): Promise<{ success: boolean; message: string; data: Pago }> {
-    const data = await PagoModel.create(body)
+    // Generamos el número único de comprobante
+    const numero_comprobante = generarNumeroComprobante()
+
+    // Añadimos el número al cuerpo para crear el pago
+    const data = await PagoModel.create({ ...body, numero_comprobante })
+
     return { success: true, message: "Pago creado exitosamente", data }
   }
 
   static async markComprobanteSent(id: number): Promise<{ success: boolean; message: string }> {
-    // ¡Aquí debe llamarse exactamente al método del modelo!
     const ok = await PagoModel.marcarComprobanteEnviado(id)
     return {
       success: ok,
@@ -45,8 +54,7 @@ export default class RecaudacionController {
     return { success: true, data: csv }
   }
 
-
-static async generateComprobanteHTML(
+  static async generateComprobanteHTML(
     id: number
   ): Promise<{ success: boolean; data: string; message?: string }> {
     const pago = await PagoModel.getById(id)
@@ -54,7 +62,6 @@ static async generateComprobanteHTML(
       return { success: false, data: "", message: "Pago no encontrado" }
     }
 
-    // Aquí defines tu plantilla HTML. Puedes adaptarla al estilo que quieras.
     const html = `
       <!DOCTYPE html>
       <html lang="es">
@@ -82,7 +89,7 @@ static async generateComprobanteHTML(
             <h1>TelTec Net</h1>
           </div>
           <div class="content">
-            <h2>Comprobante de Pago</h2>
+            <h2>Comprobante de Pago </h2>
             <table class="details">
               <tr>
                 <td class="label"><strong>Número</strong></td>

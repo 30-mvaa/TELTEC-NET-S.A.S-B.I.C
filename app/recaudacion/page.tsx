@@ -273,7 +273,7 @@ export default function RecaudacionPage() {
             <div className="text-sm">Total Recaudado</div>
           </div>
         </Card>
-        <Card className="bg-blue-500 text-green flex items-center px-6 py-4">
+        <Card className="bg-gray-500 text-white flex items-center px-6 py-4">
           <Calendar className="h-6 w-6 mr-3" />
           <div>
             <div className="text-2xl font-bold">{stats.pagosHoy}</div>
@@ -394,14 +394,14 @@ export default function RecaudacionPage() {
                     >
                       <Printer className="h-4 w-4" />
                     </Button>
-                    <Button
+                    {/* <Button
                       size="sm"
                       variant="outline"
                       disabled={p.comprobante_enviado}
                       onClick={() => onSend(p)}
                     >
                       <Mail className="h-4 w-4" />
-                    </Button>
+                    </Button>*/}
                   </TableCell>
                 </TableRow>
               ))}
@@ -416,7 +416,7 @@ export default function RecaudacionPage() {
               <CardTitle>Recaudación por Método</CardTitle>
             </CardHeader>
             <CardContent>
-              {["Efectivo", "Transferencia", "Tarjeta", "Cheque"].map((m) => {
+              {["Efectivo", "Transferencia"].map((m) => {
                 const arr = pagos.filter(
                   (x) => x.metodo_pago === m && x.estado === "completado"
                 );
@@ -507,7 +507,7 @@ export default function RecaudacionPage() {
                   <SelectValue placeholder="Seleccione método" />
                 </SelectTrigger>
                 <SelectContent>
-                  {["Efectivo", "Transferencia", "Tarjeta", "Cheque"].map((m) => (
+                  {["Efectivo", "Transferencia"].map((m) => (
                     <SelectItem key={m} value={m}>
                       {m}
                     </SelectItem>

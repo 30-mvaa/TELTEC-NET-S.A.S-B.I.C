@@ -165,10 +165,15 @@ export class AuthController {
 
 */
 
+
+
 // lib/controllers/AuthController.ts
+import { sendEmail } from "@/lib/email"  // IMPORTANTE: actualizar la importación
 import crypto from "crypto"
 import { UserModel, type User } from "../models/User"
-import { sendEmail, hashPassword } from "@/lib/utils"
+import { hashPassword } from "@/lib/utils"  // Mantener la importación de hashPassword desde utils.ts
+
+
 
 export class AuthController {
   static async login(email: string, password: string) {

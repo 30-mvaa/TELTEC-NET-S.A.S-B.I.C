@@ -14,6 +14,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  Label,
 } from "recharts"
 import {
   ArrowLeft,
@@ -51,16 +52,16 @@ export default function ReportesPage() {
 
   // Estados para filtros
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
-  const [selectedYear, setSelectedYear]   = useState(baseYear)
-  const [reportType, setReportType]       = useState("general")
+  const [selectedYear, setSelectedYear] = useState(baseYear)
+  const [reportType, setReportType] = useState("general")
   
   // Estados para datos y carga
   const [reporteData, setReporteData] = useState<ReporteData>({
     reporteFinanciero: { ingresos: 0, gastos: 0, utilidad: 0, crecimiento: 0 },
-    reporteClientes:  { activos: 0, total: 0, nuevos: 0, bajas: 0 }
+    reporteClientes: { activos: 0, total: 0, nuevos: 0, bajas: 0 }
   })
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError]         = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   
   const router = useRouter()
 
@@ -125,7 +126,7 @@ export default function ReportesPage() {
         // No hay datos para este período
         setReporteData({
           reporteFinanciero: { ingresos: 0, gastos: 0, utilidad: 0, crecimiento: 0 },
-          reporteClientes:  { activos: 0, total: 0, nuevos: 0, bajas: 0 }
+          reporteClientes: { activos: 0, total: 0, nuevos: 0, bajas: 0 }
         })
       } else {
         setReporteData(data)
@@ -135,7 +136,7 @@ export default function ReportesPage() {
       setError(err instanceof Error ? err.message : "Error desconocido")
       setReporteData({
         reporteFinanciero: { ingresos: 0, gastos: 0, utilidad: 0, crecimiento: 0 },
-        reporteClientes:  { activos: 0, total: 0, nuevos: 0, bajas: 0 }
+        reporteClientes: { activos: 0, total: 0, nuevos: 0, bajas: 0 }
       })
     } finally {
       setIsLoading(false)
@@ -145,19 +146,42 @@ export default function ReportesPage() {
   // Preparar datos para gráficos
   const datosFinancieros = [
     { name: "Ingresos", monto: reporteData.reporteFinanciero.ingresos },
-    { name: "Gastos",   monto: reporteData.reporteFinanciero.gastos },
+    { name: "Gastos", monto: reporteData.reporteFinanciero.gastos },
     { name: "Utilidad", monto: reporteData.reporteFinanciero.utilidad },
   ]
   const datosClientes = [
     { name: "Activos", cantidad: reporteData.reporteClientes.activos },
-    { name: "Nuevos",  cantidad: reporteData.reporteClientes.nuevos },
-    { name: "Bajas",   cantidad: reporteData.reporteClientes.bajas },
+    { name: "Nuevos", cantidad: reporteData.reporteClientes.nuevos },
+    { name: "Bajas", cantidad: reporteData.reporteClientes.bajas },
   ]
   const hasDatos = datosFinancieros.some(d => d.monto > 0) || datosClientes.some(d => d.cantidad > 0)
 
   // Exportar CSV
   const exportarReporte = () => {
-    // ...igual que antes...
+    const headers = ['Mes', 'Año', 'Tipo de Reporte', 'Ingresos', 'Gastos', 'Utilidad', 'Clientes Activos']
+    const rows = [
+      [
+        getMonthName(),
+        selectedYear,
+        reportType,
+        reporteData.reporteFinanciero.ingresos,
+        reporteData.reporteFinanciero.gastos,
+        reporteData.reporteFinanciero.utilidad,
+      
+        reporteData.reporteClientes.activos,
+      ]
+    ]
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = 'reporte.csv'
+    link.click()
   }
 
   // Resetear filtros a valores base
@@ -166,39 +190,6 @@ export default function ReportesPage() {
     setSelectedYear(baseYear)
     setReportType("general")
   }
-
-  useEffect(() => {
-  // Obtener los datos del gráfico
-  const fetchReporteFinanciero = async () => {
-    try {
-      const response = await fetch('/api/reportes/financieros')  // Cambiar a la ruta adecuada para obtener los datos
-      const data = await response.json()
-
-      // Actualizar los datos del reporte financiero y de clientes
-      setReporteData((prevData) => ({
-        ...prevData,
-        reporteFinanciero: {
-          ingresos: data.ingresos,
-          gastos: data.gastos,
-          utilidad: data.utilidad,
-          crecimiento: data.crecimiento,
-        },
-        reporteClientes: {
-          activos: data.activos,
-          total: data.totalClientes,
-          nuevos: data.nuevosClientes,
-          bajas: data.bajasClientes,
-        }
-      }))
-    } catch (error) {
-      console.error("Error al cargar datos del reporte financiero:", error)
-    }
-  }
-
-  fetchReporteFinanciero()
-}, [])
-
-
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -236,107 +227,6 @@ export default function ReportesPage() {
               </Button>
             </div>
           </div>
-         
-          {/* Panel de Filtros Mejorado */}
-          <Card className="mb-6">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Filter className="h-5 w-5 text-blue-600" />
-                Filtros de Reportes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {/* Selector de Mes */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">Mes</label>
-                  <Select value={selectedMonth.toString()} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Seleccionar mes" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {months.map((month) => (
-                        <SelectItem key={month.value} value={month.value.toString()}>
-                          {month.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Selector de Año */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">Año</label>
-                  <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Seleccionar año" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {generateYears().map((year) => (
-                        <SelectItem key={year} value={year.toString()}>
-                          {year}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Tipo de Reporte */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">Tipo de Reporte</label>
-                  <Select value={reportType} onValueChange={setReportType}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Tipo de reporte" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {reportTypes.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Botones de Acción */}
-                
-              </div>
-
-              {/* Filtros Activos */}
-              <div className="flex flex-wrap gap-2 pt-2 border-t">
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {getMonthName()} {selectedYear}
-                </Badge>
-                <Badge variant="outline">
-                  {reportTypes.find(t => t.value === reportType)?.label}
-                </Badge>
-                {error && (
-                  <Badge variant="destructive">
-                    Error en datos
-                  </Badge>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Indicador del período */}
-          <div className="mb-6 px-4">
-            <p className="text-lg text-slate-700">
-              Reporte correspondiente a: <strong>{getMonthName()} {selectedYear}</strong>
-              {isLoading && <span className="ml-2 text-blue-600">Cargando...</span>}
-            </p>
-          </div>
-
-          {/* Mensaje de Error */}
-          {error && (
-            <Card className="mb-6 border-red-200 bg-red-50">
-              <CardContent className="pt-6">
-                <p className="text-red-600">Error: {error}</p>
-              </CardContent>
-            </Card>
-          )}
-       
           {/* KPI Cards Mejoradas */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white hover:shadow-lg transition-shadow">
@@ -407,6 +297,71 @@ export default function ReportesPage() {
               </CardContent>
             </Card>
           </div>
+         
+          {/* Panel de Filtros Mejorado */}
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Filter className="h-5 w-5 text-blue-600" />
+                Filtros de Reportes
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Selector de Mes */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Mes</label>
+                  <Select value={selectedMonth.toString()} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Seleccionar mes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {months.map((month) => (
+                        <SelectItem key={month.value} value={month.value.toString()}>
+                          {month.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Selector de Año */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Año</label>
+                  <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Seleccionar año" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {generateYears().map((year) => (
+                        <SelectItem key={year} value={year.toString()}>
+                          {year}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Tipo de Reporte */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Tipo de Reporte</label>
+                  <Select value={reportType} onValueChange={setReportType}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Tipo de reporte" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reportTypes.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Gráficos Mejorados */}
           {isLoading ? (
@@ -418,30 +373,53 @@ export default function ReportesPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               {/* Gráfico Financiero */}
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5 text-green-600" />
-                    Resumen Financiero
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {hasDatos ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={datosFinancieros}>
-                        <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                        <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                        <YAxis tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
-                        <Tooltip formatter={(value: number) => [`$${value.toLocaleString()}`, '']} />
-                        <Bar dataKey="monto" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-64 flex items-center justify-center text-gray-500">
-                      No hay datos financieros para mostrar
-                    </div>
-                  )}
-                </CardContent>
+  <CardHeader>
+    <CardTitle className="flex items-center gap-2">
+      <TrendingUp className="h-5 w-5 text-green-600" />
+      Resumen Financiero
+    </CardTitle>
+  </CardHeader>
+  <CardContent>
+    {hasDatos ? (
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart data={datosFinancieros}>
+          <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+          <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+          <YAxis tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} tick={{ fontSize: 12 }} />
+          <Tooltip 
+            formatter={(value: number, name: string) => {
+              let label = "";
+              switch (name) {
+                case "Ingresos":
+                  label = `Ingresos: $${value.toLocaleString()}`;
+                  break;
+                case "Gastos":
+                  label = `Gastos: $${value.toLocaleString()}`;
+                  break;
+                case "Utilidad":
+                  label = `Utilidad: $${value.toLocaleString()}`;
+                  break;
+                default:
+                  label = `${name}: $${value.toLocaleString()}`;
+              }
+              return [label, '']
+            }}
+          />
+          <Bar 
+            dataKey="monto" 
+            fill="#3B82F6" 
+            radius={[4, 4, 0, 0]} 
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    ) : (
+      <div className="h-64 flex items-center justify-center text-gray-500">
+        No hay datos financieros para mostrar
+      </div>
+    )}
+  </CardContent>
               </Card>
+
 
               {/* Gráfico de Clientes */}
               <Card>
@@ -490,4 +468,8 @@ export default function ReportesPage() {
     </div>
   )
 }
+
+
+
+
 

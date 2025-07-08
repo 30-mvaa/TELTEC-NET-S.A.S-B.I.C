@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   await sendEmail({
     to: email,
     subject: "Restablecimiento de contraseña",
-    html: `<p>Haz clic <a href="${resetUrl}">aquí</a> para restablecer tu contraseña. El enlace expirará en 1 hora.</p>`,
+    html: `<p>Haz clic <a href="${resetUrl}">aquí</a> para restablecer tu contraseña. El enlace expirará en 15 minutos.</p>`,
   })
 
   return NextResponse.json({ success: true, message: "Correo enviado si el email existe" })

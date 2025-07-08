@@ -76,6 +76,7 @@ export class PagoModel {
     monto: number
     metodo_pago: string
     concepto: string
+    numero_comprobante: string;
   }): Promise<Pago> {
     const numeroComprobante = `COMP-${Date.now()}-${Math.random()
       .toString(36)

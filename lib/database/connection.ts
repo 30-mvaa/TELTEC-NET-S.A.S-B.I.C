@@ -1,3 +1,7 @@
+
+
+
+
 import { Pool } from "pg"
 
 // Configuración específica para teltec_db

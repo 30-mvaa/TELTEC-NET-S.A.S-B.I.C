@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 
@@ -109,15 +108,6 @@ export default function Dashboard() {
             stats: `${stats.notificacionesPendientes} pendientes`,
             icon: "💬",
           },
-          
-          /*{
-            name: "Configuración",
-            href: "/configuracion",
-            description: "Configuración del sistema",
-            color: "linear-gradient(135deg, #6b7280, #4b5563)",
-            stats: "Sistema configurado",
-           icon: "⚙️",
-          },*/
         ]
       case "economia":
         return [
@@ -130,13 +120,14 @@ export default function Dashboard() {
             stats: `$${stats.recaudacionMensual.toLocaleString()}`,
             icon: "💰",
           },
+          
           {
-            name: "Gastos",
-            href: "/gastos",
-            description: "Control de gastos empresariales",
-            color: "linear-gradient(135deg, #ef4444, #ec4899)",
-            stats: `$${stats.gastosDelMes.toLocaleString()}`,
-            icon: "🧾",
+            name: "Notificaciones",
+            href: "/notificaciones",
+            description: "WhatsApp y alertas automáticas",
+            color: "linear-gradient(135deg, #f59e0b, #f97316)",
+            stats: `${stats.notificacionesPendientes} pendientes`,
+            icon: "💬",
           },
         ]
       case "atencion_cliente":
@@ -145,9 +136,9 @@ export default function Dashboard() {
           {
             name: "Recaudación",
             href: "/recaudacion",
-            description: "Registro de pagos",
+            description: "Registro de pagos y comprobantes",
             color: "linear-gradient(135deg, #10b981, #059669)",
-            stats: `${stats.pagosPendientes} pendientes`,
+            stats: `$${stats.recaudacionMensual.toLocaleString()}`,
             icon: "💰",
           },
           {
@@ -249,6 +240,7 @@ export default function Dashboard() {
                 </span>
               </div>
             </div>
+            
             <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
               <button
                 style={{
@@ -259,27 +251,10 @@ export default function Dashboard() {
                   padding: "0.5rem",
                 }}
               >
-                <span style={{ fontSize: "1.25rem" }}>🔔</span>
-                {stats.notificacionesPendientes > 0 && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: "-0.25rem",
-                      right: "-0.25rem",
-                      height: "1.25rem",
-                      width: "1.25rem",
-                      borderRadius: "50%",
-                      background: "#ef4444",
-                      color: "white",
-                      fontSize: "0.75rem",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {stats.notificacionesPendientes}
-                  </span>
-                )}
+                <div className="relative flex items-center space-x-2">
+                  {/* Ícono de usuario */}
+                  <span className="text-2xl">👤</span>
+                </div>
               </button>
               <div style={{ textAlign: "right" }}>
                 <p style={{ fontSize: "0.875rem", fontWeight: "500", color: "#0f172a" }}>{user.name}</p>
@@ -337,70 +312,10 @@ export default function Dashboard() {
           </p>
         </div>
 
-        {/* Quick Stats 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-            gap: "1.5rem",
-            marginBottom: "2rem",
-          }}
-        >
-          <div style={{ ...statCardStyle, background: "linear-gradient(135deg, #3b82f6, #06b6d4)" }}>
-            <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}
-            >
-              <h3 style={{ fontSize: "0.875rem", fontWeight: "500", opacity: 0.9 }}>Total Clientes</h3>
-              <span style={{ fontSize: "1.25rem", opacity: 0.9 }}>👥</span>
-            </div>
-            <div style={{ fontSize: "1.875rem", fontWeight: "bold" }}>{stats.totalClientes.toLocaleString()}</div>
-            <p style={{ fontSize: "0.75rem", opacity: 0.9, marginTop: "0.25rem" }}>
-              <span style={{ color: "#bfdbfe" }}>↗ +12%</span> desde el mes pasado
-            </p>
-          </div>
-
-          <div style={{ ...statCardStyle, background: "linear-gradient(135deg, #10b981, #059669)" }}>
-            <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}
-            >
-              <h3 style={{ fontSize: "0.875rem", fontWeight: "500", opacity: 0.9 }}>Recaudación Mensual</h3>
-              <span style={{ fontSize: "1.25rem", opacity: 0.9 }}>💰</span>
-            </div>
-            <div style={{ fontSize: "1.875rem", fontWeight: "bold" }}>${stats.recaudacionMensual.toLocaleString()}</div>
-            <p style={{ fontSize: "0.75rem", opacity: 0.9, marginTop: "0.25rem" }}>
-              <span style={{ color: "#bbf7d0" }}>↗ +8%</span> vs mes anterior
-            </p>
-          </div>
-
-          <div style={{ ...statCardStyle, background: "linear-gradient(135deg, #f59e0b, #f97316)" }}>
-            <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}
-            >
-              <h3 style={{ fontSize: "0.875rem", fontWeight: "500", opacity: 0.9 }}>Pagos Pendientes</h3>
-              <span style={{ fontSize: "1.25rem", opacity: 0.9 }}>⚠️</span>
-            </div>
-            <div style={{ fontSize: "1.875rem", fontWeight: "bold" }}>{stats.pagosPendientes}</div>
-            <p style={{ fontSize: "0.75rem", opacity: 0.9, marginTop: "0.25rem" }}>Requieren seguimiento</p>
-          </div>
-
-          <div style={{ ...statCardStyle, background: "linear-gradient(135deg, #8b5cf6, #ec4899)" }}>
-            <div
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}
-            >
-              <h3 style={{ fontSize: "0.875rem", fontWeight: "500", opacity: 0.9 }}>Servicios Activos</h3>
-              <span style={{ fontSize: "1.25rem", opacity: 0.9 }}>📡</span>
-            </div>
-            <div style={{ fontSize: "1.875rem", fontWeight: "bold" }}>{stats.serviciosActivos.toLocaleString()}</div>
-            <p style={{ fontSize: "0.75rem", opacity: 0.9, marginTop: "0.25rem" }}>
-              {((stats.serviciosActivos / stats.totalClientes) * 100).toFixed(1)}% de actividad
-            </p>
-          </div>
-        </div>
-         */}
         {/* Modules Grid */}
         <div style={{ marginBottom: "2rem" }}>
           <h3 style={{ fontSize: "1.5rem", fontWeight: "600", color: "#0f172a", marginBottom: "1.5rem" }}>
-             Servicios
+            Servicios
           </h3>
           <div
             style={{
@@ -486,8 +401,7 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
-
-        {/* Quick Actions */}
+         {/* Quick Actions */}
         <div
           style={{
             background: "linear-gradient(135deg, #1e293b, #0f172a, #312e81)",
