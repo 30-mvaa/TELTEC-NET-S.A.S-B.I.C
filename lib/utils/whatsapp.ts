@@ -7,7 +7,7 @@ export class WhatsAppService {
   constructor() {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
-    this.fromNumber = process.env.TWILIO_PHONE_NUMBER || 'whatsapp:+14155238886';
+    this.fromNumber = process.env.TWILIO_PHONE_NUMBER || 'whatsapp:+14155238886';  
 
     if (!accountSid || !authToken) {
       throw new Error('Credenciales de Twilio no configuradas');

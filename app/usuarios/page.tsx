@@ -72,6 +72,7 @@ export default function UsuariosPage() {
     u.email.toLowerCase().includes(term) ||
     u.rol.toLowerCase().includes(term)
   )
+  
 
   const stats = [
     { title: 'Total Usuarios', value: usuarios.length, color: 'gray' },
@@ -119,13 +120,31 @@ export default function UsuariosPage() {
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('¿Eliminar este usuario?')) return
-    const res = await fetch('/api/usuarios', { method:'DELETE', headers:{ 'Content-Type':'application/json'}, body: JSON.stringify({ id }) })
-    const json = await res.json()
-    if (res.ok && json.success) fetchUsuarios()
-    else alert(json.message)
+  // Asegúrate de que solo exista esta declaración
+const handleDelete = async (id: number) => {
+  const adminsCount = usuarios.filter(u => u.rol === 'administrador').length;
+  
+  if (adminsCount <= 1) {
+    alert('No se puede realizar esta acción,Debe haber al menos un administrador en el sistema');
+    return;
   }
+
+  if (!confirm('¿Eliminar este usuario?')) return;
+  
+  const res = await fetch('/api/usuarios', { 
+    method:'DELETE', 
+    headers: { 'Content-Type':'application/json' }, 
+    body: JSON.stringify({ id }) 
+  });
+  
+  const json = await res.json();
+  if (res.ok && json.success) {
+    fetchUsuarios();
+  } else {
+    alert(json.message);
+  }
+}
+
 
   const toggleActivo = async (u: Usuario) => {
     const res = await fetch('/api/usuarios', { method:'PUT', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ id: u.id, activo: !u.activo }) })
@@ -193,18 +212,27 @@ export default function UsuariosPage() {
                       ? <Badge className="bg-blue-100 text-blue-800">Economía</Badge>
                       : <Badge className="bg-green-100 text-green-800">Atención Cliente</Badge>}
                 </TableCell>
+               
                 <TableCell>
+                  
                   <Badge className={u.activo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
                     {u.activo ? 'Activo' : 'Inactivo'}
                   </Badge>
+                 
                 </TableCell>
-                <TableCell className="flex space-x-2">
+               
+              
+                 <TableCell className="flex space-x-2">
                   <Button size="sm" variant="outline" onClick={() => openEdit(u)}><Edit /></Button>
+                    {/*
                   <Button size="sm" variant="outline" onClick={() => toggleActivo(u)}>
                     {u.activo ? 'Desactivar' : 'Activar'}
                   </Button>
+                   */}
                   <Button size="sm" variant="outline" onClick={() => handleDelete(u.id)}><Trash2 /></Button>
                 </TableCell>
+                
+                
               </TableRow>
             ))}
           </TableBody>

@@ -465,6 +465,7 @@ export default function ClientesPage() {
                     <SelectItem value="churu huayco">churu huayco</SelectItem>
                     <SelectItem value="Cullca loma">Cullca loma</SelectItem>
                      <SelectItem value="Cullca loma">Ingapirca</SelectItem>
+                     {/*}
                     <SelectItem value="Galuay">Galuay</SelectItem>
                     <SelectItem value="Honorato">Honorato</SelectItem>
                     <SelectItem value="Mulupata">Mulupata</SelectItem>
@@ -475,6 +476,7 @@ export default function ClientesPage() {
                     <SelectItem value="Tambo - Laguna">Tambo - Laguna</SelectItem>
                     <SelectItem value="Tranca">Tranca</SelectItem>
                     <SelectItem value="Vende leche">Vende leche</SelectItem>
+                    */}
 
                   </SelectContent>
                 </Select>
