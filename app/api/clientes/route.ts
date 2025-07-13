@@ -2,6 +2,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { ClienteController } from "@/lib/controllers/ClienteController";
 import type { Cliente } from "@/lib/models/Cliente";
+import { validarCedulaEcuatoriana, validarMayorEdad } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -61,6 +62,23 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    
+    // Validar cédula ecuatoriana
+    if (!validarCedulaEcuatoriana(body.cedula)) {
+      return NextResponse.json(
+        { success: false, message: "Cédula ecuatoriana inválida" },
+        { status: 400 }
+      );
+    }
+    
+    // Validar edad mínima
+    if (!validarMayorEdad(body.fecha_nacimiento)) {
+      return NextResponse.json(
+        { success: false, message: "El usuario debe ser mayor de 18 años" },
+        { status: 400 }
+      );
+    }
+    
     const result = await ClienteController.createCliente(body);
     return NextResponse.json(result, { status: result.success ? 201 : 400 });
   } catch (error) {
@@ -76,6 +94,23 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const { id, ...updates } = body;
+    
+    // Validar cédula ecuatoriana si se está actualizando
+    if (updates.cedula && !validarCedulaEcuatoriana(updates.cedula)) {
+      return NextResponse.json(
+        { success: false, message: "Cédula ecuatoriana inválida" },
+        { status: 400 }
+      );
+    }
+    
+    // Validar edad mínima si se está actualizando
+    if (updates.fecha_nacimiento && !validarMayorEdad(updates.fecha_nacimiento)) {
+      return NextResponse.json(
+        { success: false, message: "El usuario debe ser mayor de 18 años" },
+        { status: 400 }
+      );
+    }
+    
     const result = await ClienteController.updateCliente(id, updates);
     return NextResponse.json(result, { status: result.success ? 200 : 404 });
   } catch (error) {

@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Plus, Edit, Trash2 } from "lucide-react"
+import { validarCedulaEcuatoriana, formatearCedula, validarMayorEdad, calcularEdad, obtenerFechaMinima, obtenerFechaMaxima, formatearFecha } from "@/lib/utils"
 
 // Definir planes con precio
 const planes = [
@@ -86,6 +87,12 @@ export default function ClientesPage() {
   const [filterEstado, setFilterEstado] = useState<Cliente["estado"] | "todos">("todos")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Cliente | null>(null)
+  const [sectores, setSectores] = useState<string[]>([]);
+  const [planes, setPlanes] = useState<{ tipo_plan: string, precio_plan: number }[]>([]);
+  const [cedulaError, setCedulaError] = useState<string | null>(null);
+  const [cedulaValida, setCedulaValida] = useState<boolean>(false);
+  const [fechaError, setFechaError] = useState<string | null>(null);
+  const [edadCalculada, setEdadCalculada] = useState<number | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
     cedula: "",
@@ -108,6 +115,14 @@ export default function ClientesPage() {
       return
     }
     loadData()
+    fetch("/api/clientes/valores-unicos")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setSectores(data.sectores);
+          setPlanes(data.planes);
+        }
+      });
   }, [router])
 
   async function loadData() {
@@ -131,6 +146,69 @@ export default function ClientesPage() {
     }
   }
 
+  // Validar cédula en tiempo real
+  const validarCedulaEnTiempoReal = (cedula: string) => {
+    if (cedula.length === 0) {
+      setCedulaError(null);
+      setCedulaValida(false);
+      return;
+    }
+
+    if (cedula.length < 10) {
+      setCedulaError("La cédula debe tener 10 dígitos");
+      setCedulaValida(false);
+      return;
+    }
+
+    if (!/^\d+$/.test(cedula)) {
+      setCedulaError("La cédula solo debe contener números");
+      setCedulaValida(false);
+      return;
+    }
+
+    if (cedula.length === 10) {
+      if (validarCedulaEcuatoriana(cedula)) {
+        setCedulaError(null);
+        setCedulaValida(true);
+      } else {
+        setCedulaError("Cédula ecuatoriana inválida");
+        setCedulaValida(false);
+      }
+    } else {
+      setCedulaError("La cédula debe tener exactamente 10 dígitos");
+      setCedulaValida(false);
+    }
+  };
+
+  // Validar fecha de nacimiento en tiempo real
+  const validarFechaNacimientoEnTiempoReal = (fecha: string) => {
+    if (!fecha) {
+      setFechaError(null);
+      setEdadCalculada(null);
+      return;
+    }
+
+    const fechaSeleccionada = new Date(fecha);
+    const fechaMinima = new Date(obtenerFechaMinima());
+    const fechaMaxima = new Date(obtenerFechaMaxima());
+
+    if (fechaSeleccionada > fechaMinima) {
+      setFechaError("El usuario debe ser mayor de 18 años");
+      setEdadCalculada(null);
+      return;
+    }
+
+    if (fechaSeleccionada < fechaMaxima) {
+      setFechaError("La fecha de nacimiento no puede ser anterior a 100 años");
+      setEdadCalculada(null);
+      return;
+    }
+
+    const edad = calcularEdad(fecha);
+    setFechaError(null);
+    setEdadCalculada(edad);
+  };
+
   const openNew = () => {
     setEditing(null)
     setFormData({
@@ -151,14 +229,26 @@ export default function ClientesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!/^[0-9]{10}$/.test(formData.cedula)) {
-      alert("Cédula inválida: debe contener 10 dígitos numéricos.")
+    
+    // Validar cédula antes de enviar
+    if (!validarCedulaEcuatoriana(formData.cedula)) {
+      alert("Cédula ecuatoriana inválida. Por favor, verifique el número ingresado.")
       return
     }
+
+    // Validar edad mínima
+    if (!validarMayorEdad(formData.fecha_nacimiento)) {
+      alert("El usuario debe ser mayor de 18 años.")
+      return
+    }
+
+    // Validar email
     if (!/\S+@\S+\.\S+/.test(formData.email)) {
       alert("Email inválido.")
       return
     }
+
+    // Validar duplicados solo al crear nuevo cliente
     if (!editing) {
       if (clientes.some(c => c.cedula === formData.cedula)) {
         alert("Ya existe un cliente con esta cédula")
@@ -169,23 +259,44 @@ export default function ClientesPage() {
         return
       }
     }
+
     try {
       const method = editing ? "PUT" : "POST"
-      const body = editing ? { id: editing.id, ...formData } : formData
-      const res = await fetch("/api/clientes", {
+      const url = editing ? `/api/clientes/${editing.id}` : "/api/clientes"
+      const body = editing ? { ...formData, id: editing.id } : formData
+
+      const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
+
       const json = await res.json()
       if (res.ok && json.success) {
         setIsDialogOpen(false)
+        setFormData({
+          cedula: "",
+          nombres: "",
+          apellidos: "",
+          tipo_plan: "",
+          precio_plan: 0,
+          fecha_nacimiento: "",
+          direccion: "",
+          sector: "",
+          email: "",
+          telefono: "",
+          estado: "activo",
+        })
+        setCedulaError(null)
+        setCedulaValida(false)
+        setFechaError(null)
+        setEdadCalculada(null)
         loadData()
       } else {
-        alert(json.message)
+        alert(json.message || "Error al guardar cliente")
       }
-    } catch {
-      alert("Error al guardar cliente")
+    } catch (e) {
+      alert("Error de conexión")
     }
   }
 
@@ -232,18 +343,28 @@ export default function ClientesPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-4">
-            <Button variant="outline" onClick={() => router.push("/dashboard")}>
-              <ArrowLeft /> Volver
+            <Button
+              variant="outline"
+              onClick={() => router.push("/dashboard")}
+              className="flex items-center space-x-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Volver</span>
             </Button>
-            <h1 className="text-4xl font-bold">👥 Gestión de Clientes</h1>
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900">Gestión de Clientes</h1>
+              <p className="text-slate-600">Administra los clientes de TelTec</p>
+            </div>
           </div>
-          <Button
-            onClick={openNew}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Plus />
-            <span>Nuevo Cliente</span>
-          </Button>
+          <div className="flex items-center space-x-2">
+            <Button
+              onClick={openNew}
+              className="bg-blue-600 hover:bg-blue-700 text-white flex items-center space-x-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Nuevo Cliente</span>
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -310,7 +431,14 @@ export default function ClientesPage() {
                   </TableCell>
                   <TableCell>{c.tipo_plan}</TableCell>
                   <TableCell>${c.precio_plan}</TableCell>
-                  <TableCell>{c.email}</TableCell>
+                  <TableCell>
+                    <div className="text-sm">
+                      <div>{c.email}</div>
+                      <div className="text-gray-500 text-xs">
+                        {formatearFecha(c.fecha_nacimiento)} ({calcularEdad(c.fecha_nacimiento)} años)
+                      </div>
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Badge
                       className={
@@ -363,14 +491,28 @@ export default function ClientesPage() {
                   value={formData.cedula}
                   onChange={e => {
                     const value = e.target.value;
-                    if (/^\d*$/.test(value)) {
+                    if (/^\d*$/.test(value) && value.length <= 10) {
                       setFormData({ ...formData, cedula: value });
+                      validarCedulaEnTiempoReal(value);
                     }
                   }}
-                  maxLength={10} // Opcional: máximo 10 dígitos
+                  maxLength={10}
                   required
                   disabled={!!editing}
+                  className={`${cedulaError ? 'border-red-500 focus:border-red-500' : cedulaValida ? 'border-green-500 focus:border-green-500' : ''}`}
                 />
+                {cedulaError && (
+                  <div className="text-red-600 text-sm mt-1 flex items-center">
+                    <span className="mr-1">⚠️</span>
+                    {cedulaError}
+                  </div>
+                )}
+                {cedulaValida && (
+                  <div className="text-green-600 text-sm mt-1 flex items-center">
+                    <span className="mr-1">✅</span>
+                    Cédula válida: {formatearCedula(formData.cedula)}
+                  </div>
+                )}
               </div>
               <div>
                 <Label htmlFor="nombres">Nombres</Label>
@@ -407,11 +549,11 @@ export default function ClientesPage() {
                 <Select
                   value={formData.tipo_plan}
                   onValueChange={v => {
-                    const plan = planes.find(p => p.label === v)
+                    const plan = planes.find(p => p.tipo_plan === v)
                     setFormData({
                       ...formData,
                       tipo_plan: v,
-                      precio_plan: plan?.precio || 0,
+                      precio_plan: plan?.precio_plan || 0,
                     })
                   }}
                 >
@@ -419,25 +561,46 @@ export default function ClientesPage() {
                     <SelectValue placeholder="Seleccione plan" />
                   </SelectTrigger>
                   <SelectContent>
-                    {planes.map(p => (
-                      <SelectItem key={p.label} value={p.label}>
-                        {`${p.label} – $${p.precio}`}
-                      </SelectItem>
-                    ))}
+                    {planes
+                      .filter(plan => plan.tipo_plan && plan.tipo_plan.trim() !== "")
+                      .map(plan => (
+                        <SelectItem key={plan.tipo_plan} value={plan.tipo_plan}>
+                          {`${plan.tipo_plan} – $${plan.precio_plan}`}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label htmlFor="fecha_nacimiento">Nacimiento</Label>
+                <Label htmlFor="fecha_nacimiento">Fecha de Nacimiento</Label>
                 <Input
                   id="fecha_nacimiento"
                   type="date"
                   value={formData.fecha_nacimiento}
-                  onChange={e =>
-                    setFormData({ ...formData, fecha_nacimiento: e.target.value })
-                  }
+                  onChange={e => {
+                    const value = e.target.value;
+                    setFormData({ ...formData, fecha_nacimiento: value });
+                    validarFechaNacimientoEnTiempoReal(value);
+                  }}
+                  min={obtenerFechaMaxima()}
+                  max={obtenerFechaMinima()}
                   required
+                  className={`${fechaError ? 'border-red-500 focus:border-red-500' : ''}`}
                 />
+                {fechaError && (
+                  <div className="text-red-600 text-sm mt-1 flex items-center">
+                    <span className="mr-1">⚠️</span>
+                    {fechaError}
+                  </div>
+                )}
+                {edadCalculada !== null && (
+                  <div className="text-green-600 text-sm mt-1 flex items-center">
+                    <span className="mr-1">✅</span>
+                    Edad: {edadCalculada} años
+                  </div>
+                )}
+                
+                
               </div>
               <div>
                 <Label htmlFor="direccion">Dirección</Label>
@@ -459,25 +622,11 @@ export default function ClientesPage() {
                     <SelectValue placeholder="Seleccione sector" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Atu la virgen">Atu la virgen</SelectItem>
-                    <SelectItem value="Cagunapamba">Cagunapamba</SelectItem>
-                    <SelectItem value="Cañar centro">Cañar centro</SelectItem>
-                    <SelectItem value="churu huayco">churu huayco</SelectItem>
-                    <SelectItem value="Cullca loma">Cullca loma</SelectItem>
-                     <SelectItem value="Cullca loma">Ingapirca</SelectItem>
-                     {/*}
-                    <SelectItem value="Galuay">Galuay</SelectItem>
-                    <SelectItem value="Honorato">Honorato</SelectItem>
-                    <SelectItem value="Mulupata">Mulupata</SelectItem>
-                    <SelectItem value="San jose">San jose</SelectItem>
-                    <SelectItem value="Sisid anejo">Sisid anejo</SelectItem>
-                    <SelectItem value="Sisid Centro">Sisid Centro</SelectItem>
-                    <SelectItem value="Tambo">Tambo</SelectItem>
-                    <SelectItem value="Tambo - Laguna">Tambo - Laguna</SelectItem>
-                    <SelectItem value="Tranca">Tranca</SelectItem>
-                    <SelectItem value="Vende leche">Vende leche</SelectItem>
-                    */}
-
+                    {sectores
+                      .filter(sector => sector && sector.trim() !== "")
+                      .map(sector => (
+                        <SelectItem key={sector} value={sector}>{sector}</SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

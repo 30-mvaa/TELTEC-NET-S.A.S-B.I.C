@@ -180,13 +180,44 @@ export default function RecaudacionPage() {
   async function onSelectCli(id: string) {
     const c = clientes.find((x) => x.id === Number(id));
     if (!c) return;
-    setSelCli(c);
-    setForm({
-      cliente_id: c.id,
-      monto: Number(c.precio_plan),
-      metodo_pago: "",
-      concepto: `Pago mensual - ${c.tipo_plan}`,
-    });
+    
+    // Obtener información de deudas del cliente
+    try {
+      const deudaRes = await fetch(`/api/deudas?action=monto-pagar&clienteId=${c.id}`);
+      const deudaData = await deudaRes.json();
+      
+      setSelCli(c);
+      
+      // Calcular monto a pagar (incluyendo deudas)
+      let montoAPagar = Number(c.precio_plan);
+      let concepto = `Pago mensual - ${c.tipo_plan}`;
+      
+      if (deudaData.success && deudaData.data) {
+        const { monto_base, multas, total, cuotas_vencidas } = deudaData.data;
+        
+        if (cuotas_vencidas > 0) {
+          montoAPagar = total;
+          concepto = `Pago mensual + ${cuotas_vencidas} mes(es) vencido(s) + multas - ${c.tipo_plan}`;
+        }
+      }
+      
+      setForm({
+        cliente_id: c.id,
+        monto: montoAPagar,
+        metodo_pago: "",
+        concepto: concepto,
+      });
+    } catch (error) {
+      console.error("Error obteniendo información de deudas:", error);
+      // Fallback al comportamiento original
+      setSelCli(c);
+      setForm({
+        cliente_id: c.id,
+        monto: Number(c.precio_plan),
+        metodo_pago: "",
+        concepto: `Pago mensual - ${c.tipo_plan}`,
+      });
+    }
   }
 
   // Guardar pago
@@ -394,14 +425,14 @@ export default function RecaudacionPage() {
                     >
                       <Printer className="h-4 w-4" />
                     </Button>
-                    {/* <Button
+                    <Button
                       size="sm"
                       variant="outline"
                       disabled={p.comprobante_enviado}
                       onClick={() => onSend(p)}
                     >
                       <Mail className="h-4 w-4" />
-                    </Button>*/}
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -465,14 +496,16 @@ export default function RecaudacionPage() {
                   <SelectValue placeholder="Seleccione cliente" />
                 </SelectTrigger>
                 <SelectContent>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      <div className="flex items-center gap-2">
-                        <User className="text-blue-500" />
-                        {c.nombres} {c.apellidos}
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {clientes
+                    .filter(c => c.id && c.nombres && c.apellidos)
+                    .map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        <div className="flex items-center gap-2">
+                          <User className="text-blue-500" />
+                          {c.nombres} {c.apellidos}
+                        </div>
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

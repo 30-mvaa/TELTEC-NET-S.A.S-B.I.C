@@ -42,7 +42,12 @@ export default function Dashboard() {
       router.push("/")
       return
     }
-    setUser(JSON.parse(userData))
+    const parsed = JSON.parse(userData)
+    // Asegura que el campo sea siempre 'role', sin dañar otras propiedades
+    setUser({
+      ...parsed,
+      role: parsed.role || parsed.rol,
+    })
   }, [router])
 
   const handleLogout = () => {
@@ -312,6 +317,28 @@ export default function Dashboard() {
           </p>
         </div>
 
+        {/* Botón de configuración solo para administradores, debajo de bienvenida y a la derecha */}
+        {user.role === "administrador" && (
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "2rem" }}>
+            <button
+              onClick={() => router.push("/configuracion")}
+              style={{
+                background: "linear-gradient(90deg, #6366f1, #06b6d4)",
+                color: "white",
+                padding: "0.5rem 1.5rem",
+                borderRadius: "0.5rem",
+                border: "none",
+                fontWeight: 600,
+                fontSize: "1rem",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+              }}
+            >
+              ⚙️ Configuración
+            </button>
+          </div>
+        )}
+
         {/* Modules Grid */}
         <div style={{ marginBottom: "2rem" }}>
           <h3 style={{ fontSize: "1.5rem", fontWeight: "600", color: "#0f172a", marginBottom: "1.5rem" }}>
@@ -395,7 +422,7 @@ export default function Dashboard() {
                     boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
                   }}
                 >
-                  Acceder al módulo
+                  Acceder al módulo 
                 </button>
               </div>
             ))}

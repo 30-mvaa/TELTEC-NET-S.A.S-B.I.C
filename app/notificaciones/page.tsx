@@ -162,6 +162,15 @@ export default function NotificacionesPage() {
     mensaje: "",
   })
   const router = useRouter()
+  const [sectores, setSectores] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/clientes/valores-unicos")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setSectores(data.sectores);
+      });
+  }, []);
 
   const tiposNotificacion = [
     { valor: "pago_proximo", label: "Pago Próximo", color: "bg-yellow-100 text-yellow-800", icon: Calendar },
@@ -452,11 +461,13 @@ export default function NotificacionesPage() {
                           <SelectValue placeholder="Seleccionar cliente" />
                         </SelectTrigger>
                         <SelectContent>
-                          {clientes.map((cliente) => (
-                            <SelectItem key={cliente.id} value={cliente.id.toString()}>
-                              {cliente.nombres} {cliente.apellidos} - {cliente.telefono}
-                            </SelectItem>
-                          ))}
+                          {clientes
+                            .filter(cliente => cliente.id && cliente.nombres && cliente.apellidos)
+                            .map((cliente) => (
+                              <SelectItem key={cliente.id} value={cliente.id.toString()}>
+                                {cliente.nombres} {cliente.apellidos} - {cliente.telefono}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                       </Select>
                     </div>

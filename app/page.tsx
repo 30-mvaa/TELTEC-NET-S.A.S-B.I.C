@@ -2,7 +2,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { AuthController } from "@/lib/controllers/AuthController"
 import { Button } from "@/components/ui/button"
@@ -21,15 +21,96 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const router = useRouter()
+  const [loginAttempts, setLoginAttempts] = useState(0)
+  const [maxAttempts, setMaxAttempts] = useState(3) // valor por defecto, se puede actualizar según backend
+  const [blockMinutes, setBlockMinutes] = useState(5) // valor por defecto, se puede actualizar según backend
+  const [isBlocked, setIsBlocked] = useState(false)
+  const [blockUntil, setBlockUntil] = useState<Date | null>(null)
+  const [remainingTime, setRemainingTime] = useState(0)
+  // Estado para saber si la configuración ya fue cargada
+  const [configLoaded, setConfigLoaded] = useState(false)
+
+  // Al cargar, revisar si hay bloqueo persistente
+  useEffect(() => {
+    // Obtener configuración de login desde la API
+    fetch('/api/configuracion')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          const config = data.data
+          const max = config.find((c: any) => c.clave === 'login_intentos_maximos')?.valor
+          const min = config.find((c: any) => c.clave === 'login_minutos_congelacion')?.valor
+          if (max) setMaxAttempts(Number(max))
+          if (min) setBlockMinutes(Number(min))
+        }
+        setConfigLoaded(true)
+      })
+      .catch(() => { setConfigLoaded(true) })
+    // Al cargar, revisar si hay bloqueo persistente
+    const storedBlock = localStorage.getItem("login_block_until")
+    if (storedBlock) {
+      const until = new Date(storedBlock)
+      if (until > new Date()) {
+        setIsBlocked(true)
+        setBlockUntil(until)
+      } else {
+        localStorage.removeItem("login_block_until")
+      }
+    }
+  }, [])
+
+  // Manejar el desbloqueo automático
+  useEffect(() => {
+    if (!blockUntil) return
+    const now = new Date()
+    const ms = blockUntil.getTime() - now.getTime()
+    if (ms <= 0) {
+      setIsBlocked(false)
+      setBlockUntil(null)
+      setLoginAttempts(0)
+      localStorage.removeItem("login_block_until")
+      return
+    }
+    localStorage.setItem("login_block_until", blockUntil.toISOString())
+    const timeout = setTimeout(() => {
+      setIsBlocked(false)
+      setBlockUntil(null)
+      setLoginAttempts(0)
+      localStorage.removeItem("login_block_until")
+    }, ms)
+    return () => clearTimeout(timeout)
+  }, [blockUntil])
+
+  // Actualizar el contador regresivo cuando está bloqueado
+  useEffect(() => {
+    if (!isBlocked || !blockUntil) {
+      setRemainingTime(0)
+      return
+    }
+    const update = () => {
+      const now = new Date()
+      const diff = Math.max(0, Math.floor((blockUntil.getTime() - now.getTime()) / 1000))
+      setRemainingTime(diff)
+    }
+    update()
+    const interval = setInterval(update, 1000)
+    return () => clearInterval(interval)
+  }, [isBlocked, blockUntil])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
 
+    // Esperar a que la configuración esté cargada
+    if (!configLoaded) {
+      setError("Cargando configuración, intente en un momento...")
+      setIsLoading(false)
+      return
+    }
+
     try {
-      // Llamar a la API route para autenticar
-      const response = await fetch('/api/auth', {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -39,19 +120,44 @@ export default function LoginPage() {
 
       const result = await response.json()
       
-      if (result.success && result.data) {
-        // Guardar usuario en localStorage
+      if (response.status === 429) {
+        // Extraer minutos de bloqueo del mensaje, pero si no existe usar el valor de la base de datos
+        let minutos = blockMinutes
+        const match = result.message && result.message.match(/(\d+) min/)
+        if (match) minutos = parseInt(match[1], 10)
+        setBlockMinutes(minutos)
+        setIsBlocked(true)
+        const until = new Date(Date.now() + minutos * 60000)
+        setBlockUntil(until)
+        localStorage.setItem("login_block_until", until.toISOString())
+        setError(`Demasiados intentos fallidos. Intente más tarde (${minutos} min).`)
+      } else if (result.success && result.user) {
+        // Login exitoso: resetear intentos
+        setLoginAttempts(0)
+        setIsBlocked(false)
+        setBlockUntil(null)
+        localStorage.removeItem("login_block_until")
         localStorage.setItem("user", JSON.stringify({
-          id: result.data.id,
-          email: result.data.email,
-          role: result.data.rol,
-          name: result.data.nombre,
+          id: result.user.id,
+          email: result.user.email,
+          role: result.user.rol,
+          name: result.user.nombre,
         }))
-        
-        // Redirigir al dashboard
         router.push("/dashboard")
       } else {
+        // Si el mensaje incluye el intento actual y el máximo, extraerlo
+        const match = result.message && result.message.match(/Intento (\d+) de (\d+)/)
+        if (match) {
+          setLoginAttempts(Number(match[1]))
+          setMaxAttempts(Number(match[2]))
+        } else {
+          setLoginAttempts((prev) => prev + 1)
+        }
         setError(result.message || "Credenciales incorrectas")
+        // Mostrar alert si el usuario no está registrado
+        if (response.status === 404 && result.message === "Usuario no encontrado") {
+          window.alert("El correo ingresado no está registrado en el sistema.")
+        }
       }
     } catch (error) {
       console.error("Error en login:", error)
@@ -272,6 +378,7 @@ export default function LoginPage() {
                     fontSize: "1rem",
                   }}
                   required
+                  disabled={isBlocked}
                 />
               </div>
             </div>
@@ -315,6 +422,7 @@ export default function LoginPage() {
                     fontSize: "1rem",
                   }}
                   required
+                  disabled={isBlocked}
                 />
                 <button
                   type="button"
@@ -335,11 +443,23 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {error && <p style={{ color: "#f87171", fontSize: "0.875rem", textAlign: "center" }}>{error}</p>}
+            {error && (
+            <div style={{
+              color: "#dc2626", // rojo fuerte
+              fontWeight: 600,
+              fontSize: "1.1rem",
+              textAlign: "center",
+              marginTop: "1rem",
+              marginBottom: "1rem",
+            }}>
+              <p style={{ fontWeight: "normal" }}>Contraseña incorrecta</p>
+
+            </div>
+          )}
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || isBlocked}
               style={{
                 width: "100%",
                 background: "linear-gradient(45deg, #06b6d4, #3b82f6)",
@@ -349,13 +469,18 @@ export default function LoginPage() {
                 fontWeight: "600",
                 borderRadius: "0.5rem",
                 border: "none",
-                cursor: isLoading ? "not-allowed" : "pointer",
+                cursor: isLoading || isBlocked ? "not-allowed" : "pointer",
                 boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
-                opacity: isLoading ? 0.7 : 1,
+                opacity: isLoading || isBlocked ? 0.7 : 1,
               }}
             >
               {isLoading ? "Iniciando..." : "Iniciar Sesión"}
             </button>
+            {isBlocked && remainingTime > 0 && (
+              <div style={{ marginTop: "0.5rem", textAlign: "center", color: "#64748b", fontSize: "0.95rem" }}>
+                Intente nuevamente, por favor espere: <span style={{ color: "#3B82F6", fontWeight: 600 }}>{Math.floor(remainingTime / 60)}:{(remainingTime % 60).toString().padStart(2, '0')}</span>
+              </div>  
+            )}
           </form>
 
           <div style={{ marginTop: "1.5rem", textAlign: "center", fontSize: "0.875rem", color: "#9ca3af" }}>

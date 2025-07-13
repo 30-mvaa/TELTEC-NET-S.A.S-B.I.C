@@ -172,7 +172,7 @@ import { sendEmail } from "@/lib/email"  // IMPORTANTE: actualizar la importaci�
 import crypto from "crypto"
 import { UserModel, type User } from "../models/User"
 import { hashPassword } from "@/lib/utils"  // Mantener la importación de hashPassword desde utils.ts
-
+import { saveAuditLog } from "../models/auditLog";
 
 
 export class AuthController {
@@ -185,6 +185,14 @@ export class AuthController {
       if (!user) {
         return { success: false, data: null, message: "Credenciales incorrectas" }
       }
+      // Registrar auditoría de login exitoso
+      await saveAuditLog({
+        userId: user.id,
+        role: user.rol, // corregido: era 'role', debe ser 'rol'
+        action: 'login',
+        details: 'Inicio de sesión exitoso',
+        sessionId: undefined // Puedes pasar un identificador de sesión si lo tienes
+      });
       return { success: true, data: user, message: "Login exitoso" }
     } catch (error) {
       console.error("Error en AuthController.login:", error)
