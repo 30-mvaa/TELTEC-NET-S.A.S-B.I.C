@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
-import { ArrowLeft, Settings, MessageSquare, Save, Mail, Database, Shield } from "lucide-react"
+import { ArrowLeft, Settings, MessageSquare, Save, Mail, Database, Shield, Smartphone } from "lucide-react"
 
 // Spinner simple
 const Spinner = () => (
@@ -549,6 +549,39 @@ export default function ConfiguracionPage() {
                     disabled={saving}
                   >
                     {saving ? (<><Spinner />Guardando...</>) : (<> <Save className="h-4 w-4 mr-2" /> Guardar Configuración</>)}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Nueva configuración de WhatsApp */}
+              <Card className="bg-white/70 backdrop-blur-sm border-0 shadow-xl">
+                <CardHeader className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-t-lg">
+                  <CardTitle className="flex items-center space-x-2">
+                    <Smartphone className="h-5 w-5" />
+                    <span>Configuración Avanzada de WhatsApp</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6 p-6">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h3 className="font-semibold text-blue-800 mb-2">🚀 Alternativas Gratuitas a Twilio</h3>
+                    <p className="text-blue-700 text-sm mb-4">
+                      Ahora puedes usar WhatsApp gratuito sin costo mensual. Configura tu número personal 
+                      y envía mensajes ilimitados sin pagar por Twilio.
+                    </p>
+                    <div className="space-y-2 text-sm text-blue-600">
+                      <div>✅ Completamente gratuito</div>
+                      <div>✅ Sin límites de mensajes</div>
+                      <div>✅ Usa tu número personal</div>
+                      <div>✅ Configuración fácil</div>
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={() => router.push('/configuracion/whatsapp')}
+                    className="bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white w-full"
+                  >
+                    <Smartphone className="h-4 w-4 mr-2" />
+                    Configurar WhatsApp Gratuito
                   </Button>
                 </CardContent>
               </Card>

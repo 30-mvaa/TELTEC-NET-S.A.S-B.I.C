@@ -1,5 +1,6 @@
 import type { Cliente } from "@/lib/models/Cliente"
 import { ClienteModel } from "@/lib/models/Cliente"
+import { query } from "@/lib/database/connection"
 
 interface ControllerResult<T> {
   success: boolean
@@ -81,6 +82,22 @@ export class ClienteController {
         return { success: false, data: null, message: "Ya existe un cliente con este email" }
       }
       const nuevo = await ClienteModel.create(clienteData)
+      // Crear cuota inicial para el mes de registro
+      const fechaRegistro = nuevo.fecha_registro || new Date().toISOString().slice(0, 10)
+      const fecha = new Date(fechaRegistro)
+      const mes = fecha.getMonth() + 1 // JS: 0-11, SQL: 1-12
+      const año = fecha.getFullYear()
+      await query(
+        `INSERT INTO cuotas_mensuales (cliente_id, mes, año, monto, fecha_vencimiento, estado)
+         VALUES ($1, $2, $3, $4, $5, 'pendiente')`,
+        [
+          nuevo.id,
+          mes,
+          año,
+          nuevo.precio_plan,
+          fechaRegistro // puedes ajustar la lógica de vencimiento si lo deseas
+        ]
+      )
       return { success: true, data: nuevo, message: "Cliente creado exitosamente" }
     } catch (error) {
       console.error("Error en ClienteController.createCliente:", error)

@@ -108,6 +108,16 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json(configRes, { status: configRes.success ? 200 : 500 })
     }
 
+    if (action === "pagar") {
+      const { cuota_id, pago_id } = await req.json();
+      const { query } = await import("@/lib/database/connection");
+      await query(
+        `UPDATE cuotas_mensuales SET estado = 'pagado', fecha_pago = CURRENT_DATE, pago_id = $1 WHERE id = $2`,
+        [pago_id, cuota_id]
+      );
+      return NextResponse.json({ success: true, message: "Cuota pagada" });
+    }
+
     return NextResponse.json(
       { success: false, message: "Acción no válida" },
       { status: 400 }

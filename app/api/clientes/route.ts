@@ -62,9 +62,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    console.log("Datos recibidos para crear cliente:", body);
     
     // Validar cédula ecuatoriana
     if (!validarCedulaEcuatoriana(body.cedula)) {
+      console.log("Cédula inválida:", body.cedula);
       return NextResponse.json(
         { success: false, message: "Cédula ecuatoriana inválida" },
         { status: 400 }
@@ -73,6 +75,7 @@ export async function POST(request: NextRequest) {
     
     // Validar edad mínima
     if (!validarMayorEdad(body.fecha_nacimiento)) {
+      console.log("Fecha de nacimiento inválida:", body.fecha_nacimiento);
       return NextResponse.json(
         { success: false, message: "El usuario debe ser mayor de 18 años" },
         { status: 400 }
@@ -80,6 +83,7 @@ export async function POST(request: NextRequest) {
     }
     
     const result = await ClienteController.createCliente(body);
+    console.log("Resultado de creación:", result);
     return NextResponse.json(result, { status: result.success ? 201 : 400 });
   } catch (error) {
     console.error("Error en POST /api/clientes:", error);

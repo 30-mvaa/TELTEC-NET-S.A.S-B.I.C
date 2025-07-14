@@ -98,6 +98,14 @@ export default function Dashboard() {
             icon: "💰",
           },
           {
+            name: "Gestión de Deudas",
+            href: "/deudas",
+            description: "Control de pagos vencidos y deudas",
+            color: "linear-gradient(135deg, #dc2626, #ea580c)",
+            stats: `${stats.morosidad}% morosidad`,
+            icon: "⚠️",
+          },
+          {
             name: "Gastos",
             href: "/gastos",
             description: "Control de gastos empresariales",
@@ -125,7 +133,14 @@ export default function Dashboard() {
             stats: `$${stats.recaudacionMensual.toLocaleString()}`,
             icon: "💰",
           },
-          
+          {
+            name: "Gestión de Deudas",
+            href: "/deudas",
+            description: "Control de pagos vencidos y deudas",
+            color: "linear-gradient(135deg, #dc2626, #ea580c)",
+            stats: `${stats.morosidad}% morosidad`,
+            icon: "⚠️",
+          },
           {
             name: "Notificaciones",
             href: "/notificaciones",
@@ -145,6 +160,14 @@ export default function Dashboard() {
             color: "linear-gradient(135deg, #10b981, #059669)",
             stats: `$${stats.recaudacionMensual.toLocaleString()}`,
             icon: "💰",
+          },
+          {
+            name: "Gestión de Deudas",
+            href: "/deudas",
+            description: "Control de pagos vencidos y deudas",
+            color: "linear-gradient(135deg, #dc2626, #ea580c)",
+            stats: `${stats.morosidad}% morosidad`,
+            icon: "⚠️",
           },
           {
             name: "Notificaciones",
@@ -315,29 +338,30 @@ export default function Dashboard() {
               day: "numeric",
             })}
           </p>
+          {/* Botón de configuración solo para administradores, debajo de bienvenida y a la derecha */}
+          {user.role === "administrador" && (
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "2rem" }}>
+                      <button
+                        onClick={() => router.push("/configuracion")}
+                        style={{
+                          background: "linear-gradient(90deg, #6366f1, #06b6d4)",
+                          color: "white",
+                          padding: "0.5rem 1.5rem",
+                          borderRadius: "0.5rem",
+                          border: "none",
+                          fontWeight: 600,
+                          fontSize: "1rem",
+                          cursor: "pointer",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                        }}
+                      >
+                        ⚙️ Configuración
+                      </button>
+                    </div>
+                  )}
         </div>
 
-        {/* Botón de configuración solo para administradores, debajo de bienvenida y a la derecha */}
-        {user.role === "administrador" && (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "2rem" }}>
-            <button
-              onClick={() => router.push("/configuracion")}
-              style={{
-                background: "linear-gradient(90deg, #6366f1, #06b6d4)",
-                color: "white",
-                padding: "0.5rem 1.5rem",
-                borderRadius: "0.5rem",
-                border: "none",
-                fontWeight: 600,
-                fontSize: "1rem",
-                cursor: "pointer",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-              }}
-            >
-              ⚙️ Configuración
-            </button>
-          </div>
-        )}
+       
 
         {/* Modules Grid */}
         <div style={{ marginBottom: "2rem" }}>

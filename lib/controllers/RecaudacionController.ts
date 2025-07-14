@@ -1,5 +1,7 @@
 import { PagoModel } from "@/lib/models/Pago"
 import type { Pago } from "@/lib/models/Pago"
+import { query } from "@/lib/database/connection"
+import { sendEmail } from "@/lib/email"
 
 type Stats = {
   total_pagos: number
@@ -27,12 +29,53 @@ export default class RecaudacionController {
     metodo_pago: string
     concepto: string
   }): Promise<{ success: boolean; message: string; data: Pago }> {
+    console.log("[Recaudacion] Iniciando registro de pago", body)
     // Generamos el número único de comprobante
     const numero_comprobante = generarNumeroComprobante()
+    console.log("[Recaudacion] Numero comprobante generado:", numero_comprobante)
 
     // Añadimos el número al cuerpo para crear el pago
-    const data = await PagoModel.create({ ...body, numero_comprobante })
+    let data: Pago
+    try {
+      data = await PagoModel.create({ ...body, numero_comprobante })
+      console.log("[Recaudacion] Pago creado en la base de datos", data)
+    } catch (error) {
+      console.error("[Recaudacion] Error creando el pago:", error)
+      throw error
+    }
 
+    // Marcar como pagada la cuota pendiente más antigua del cliente
+    try {
+      await query(`
+        UPDATE cuotas_mensuales
+        SET estado = 'pagado', fecha_pago = CURRENT_DATE, pago_id = $1
+        WHERE cliente_id = $2 AND estado = 'pendiente'
+        ORDER BY año ASC, mes ASC
+        LIMIT 1
+      `, [data.id, body.cliente_id])
+      console.log("[Recaudacion] Cuota pendiente marcada como pagada")
+    } catch (error) {
+      console.error("[Recaudacion] Error actualizando cuota:", error)
+    }
+
+    // Retornar la respuesta al frontend primero
+    setImmediate(async () => {
+      try {
+        const comprobante = await this.generateComprobanteHTML(data.id)
+        if (comprobante.success) {
+          await sendEmail({
+            to: data.cliente_email,
+            subject: "Comprobante de Pago - TelTec Net",
+            html: comprobante.data,
+          })
+          console.log("[Recaudacion] Comprobante enviado por email")
+        }
+      } catch (error) {
+        console.error("Error enviando comprobante por email:", error)
+      }
+    })
+
+    console.log("[Recaudacion] Pago registrado exitosamente, retornando al frontend")
     return { success: true, message: "Pago creado exitosamente", data }
   }
 
@@ -130,5 +173,9 @@ export default class RecaudacionController {
       </html>
     `
     return { success: true, data: html }
+  }
+
+  static async generarCuotasMensuales(): Promise<void> {
+    await query('SELECT generar_cuotas_mensuales()')
   }
 }

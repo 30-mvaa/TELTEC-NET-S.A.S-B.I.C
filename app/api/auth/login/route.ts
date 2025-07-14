@@ -37,47 +37,39 @@ export async function POST(request: NextRequest) {
     const { intentosMax, minutosBloqueo } = await getLoginConfig()
     console.log('DEBUG login_intentos_maximos:', intentosMax, 'login_minutos_congelacion:', minutosBloqueo)
     const now = new Date()
-    let intentoRes = await db.query(
-      `SELECT * FROM login_intentos WHERE email = $1`,
-      [email]
-    )
-    const intento = intentoRes.rows[0]
-    if (intento && intento.bloqueado_hasta && new Date(intento.bloqueado_hasta) > now) {
-      const minutosRestantes = Math.ceil((new Date(intento.bloqueado_hasta).getTime() - now.getTime()) / 60000)
-      return NextResponse.json(
-        { success: false, message: `Demasiados intentos fallidos. Intente más tarde (${minutosRestantes} min).` },
-        { status: 429 }
-      )
-    }
-
-    // Buscar usuario por email
-    const result = await db.query(
+    
+    // Buscar usuario por email primero para obtener el ID
+    const userResult = await db.query(
       `SELECT * FROM usuarios WHERE email = $1`,
       [email]
     )
-    const user = result.rows[0]
+    const user = userResult.rows[0]
+    
+    // Si el usuario existe, verificar intentos de login
+    if (user) {
+      let intentoRes = await db.query(
+        `SELECT * FROM login_intentos WHERE usuario_id = $1`,
+        [user.id]
+      )
+      const intento = intentoRes.rows[0]
+      
+      // Verificar si está bloqueado por tiempo
+      if (intento && intento.fecha_ultimo_intento) {
+        const tiempoTranscurrido = now.getTime() - new Date(intento.fecha_ultimo_intento).getTime()
+        const minutosTranscurridos = tiempoTranscurrido / 60000
+        
+        if (intento.intentos >= intentosMax && minutosTranscurridos < minutosBloqueo) {
+          const minutosRestantes = Math.ceil(minutosBloqueo - minutosTranscurridos)
+          return NextResponse.json(
+            { success: false, message: `Demasiados intentos fallidos. Intente más tarde (${minutosRestantes} min).` },
+            { status: 429 }
+          )
+        }
+      }
+    }
 
     // Registrar intento fallido si no existe usuario
     if (!user) {
-      const res = await db.query(
-        `INSERT INTO login_intentos (email, intentos, bloqueado_hasta)
-         VALUES ($1, 1, NULL)
-         ON CONFLICT (email) DO UPDATE SET intentos = login_intentos.intentos + 1
-         RETURNING intentos`,
-        [email]
-      )
-      const intentosActuales = res.rows[1]?.intentos || 1
-      if (intentosActuales >= intentosMax) {
-        const bloqueadoHasta = new Date(Date.now() + minutosBloqueo * 60000)
-        await db.query(
-          `UPDATE login_intentos SET bloqueado_hasta = $2 WHERE email = $1`,
-          [email, bloqueadoHasta]
-        )
-        return NextResponse.json(
-          { success: false, message: `Demasiados intentos fallidos. Intente más tarde (${minutosBloqueo} min).` },
-          { status: 429 }
-        )
-      }
       return NextResponse.json(
         { success: false, message: "Usuario no encontrado" },
         { status: 404 }
@@ -89,24 +81,15 @@ export async function POST(request: NextRequest) {
     if (!passwordMatch) {
       // Registrar intento fallido
       const res = await db.query(
-        `INSERT INTO login_intentos (email, intentos, bloqueado_hasta)
-         VALUES ($1, 1, NULL)
-         ON CONFLICT (email) DO UPDATE SET intentos = login_intentos.intentos + 1
+        `INSERT INTO login_intentos (usuario_id, intentos, fecha_ultimo_intento)
+         VALUES ($1, 1, CURRENT_TIMESTAMP)
+         ON CONFLICT (usuario_id) DO UPDATE SET 
+           intentos = login_intentos.intentos + 1,
+           fecha_ultimo_intento = CURRENT_TIMESTAMP
          RETURNING intentos`,
-        [email]
+        [user.id]
       )
       const intentosActuales = res.rows[0]?.intentos || 1
-      if (intentosActuales >= intentosMax) {
-        const bloqueadoHasta = new Date(Date.now() + minutosBloqueo * 60000)
-        await db.query(
-          `UPDATE login_intentos SET bloqueado_hasta = $2 WHERE email = $1`,
-          [email, bloqueadoHasta]
-        )
-        return NextResponse.json(
-          { success: false, message: `Demasiados intentos fallidos. Intente más tarde (${minutosBloqueo} min).` },
-          { status: 429 }
-        )
-      }
       return NextResponse.json(
         { success: false, message: `Contraseña incorrecta. Intento ${intentosActuales} de ${intentosMax}` },
         { status: 401 }
@@ -115,8 +98,8 @@ export async function POST(request: NextRequest) {
 
     // Login exitoso: resetear intentos
     await db.query(
-      `DELETE FROM login_intentos WHERE email = $1`,
-      [email]
+      `DELETE FROM login_intentos WHERE usuario_id = $1`,
+      [user.id]
     )
 
     // (Aquí podrías generar token o sesión si estás usando JWT o cookies)
