@@ -122,6 +122,9 @@ export default function RecaudacionPage() {
 
   const [loading, setLoading] = useState(false);
 
+  // Estado para los meses que se están pagando
+  const [mesesPagados, setMesesPagados] = useState<{ mes: number, año: number }[]>([])
+
   // Carga inicial
   useEffect(() => {
     if (!localStorage.getItem("user")) {
@@ -180,27 +183,30 @@ export default function RecaudacionPage() {
   async function onSelectCli(id: string) {
     const c = clientes.find((x) => x.id === Number(id));
     if (!c) return;
-    
-    // Obtener información de deudas del cliente
     try {
       const deudaRes = await fetch(`/api/deudas?action=monto-pagar&clienteId=${c.id}`);
       const deudaData = await deudaRes.json();
-      
+      // Obtener cuotas pendientes/vencidas
+      const cuotasRes = await fetch(`/api/deudas?action=cuotas&clienteId=${c.id}`);
+      const cuotasData = await cuotasRes.json();
       setSelCli(c);
-      
-      // Calcular monto a pagar (incluyendo deudas)
       let montoAPagar = Number(c.precio_plan);
       let concepto = `Pago mensual - ${c.tipo_plan}`;
-      
+      let mesesCubiertos: { mes: number, año: number }[] = [];
       if (deudaData.success && deudaData.data) {
         const { monto_base, multas, total, cuotas_vencidas } = deudaData.data;
-        
-        if (cuotas_vencidas > 0) {
+        if (cuotas_vencidas > 0 && cuotasData.success && Array.isArray(cuotasData.data)) {
+          // Filtrar cuotas vencidas o pendientes
+          const cuotasPendientes = cuotasData.data.filter((q: any) => q.estado === 'vencido' || q.estado === 'pendiente');
+          // Ordenar por año y mes ascendente
+          cuotasPendientes.sort((a: any, b: any) => a.año !== b.año ? a.año - b.año : a.mes - b.mes);
+          // Tomar los primeros N meses según cuotas_vencidas
+          mesesCubiertos = cuotasPendientes.slice(0, cuotas_vencidas).map((q: any) => ({ mes: q.mes, año: q.año }));
           montoAPagar = total;
           concepto = `Pago mensual + ${cuotas_vencidas} mes(es) vencido(s) + multas - ${c.tipo_plan}`;
         }
       }
-      
+      setMesesPagados(mesesCubiertos);
       setForm({
         cliente_id: c.id,
         monto: montoAPagar,
@@ -209,7 +215,6 @@ export default function RecaudacionPage() {
       });
     } catch (error) {
       console.error("Error obteniendo información de deudas:", error);
-      // Fallback al comportamiento original
       setSelCli(c);
       setForm({
         cliente_id: c.id,
@@ -217,6 +222,7 @@ export default function RecaudacionPage() {
         metodo_pago: "",
         concepto: `Pago mensual - ${c.tipo_plan}`,
       });
+      setMesesPagados([]);
     }
   }
 
@@ -239,7 +245,7 @@ export default function RecaudacionPage() {
       setIsOpen(false);
       setSelCli(null);
       setForm({ cliente_id: 0, monto: 0, metodo_pago: "", concepto: "" });
-      alert(j.message);
+      alert(j.message + "\nEl comprobante será enviado automáticamente al correo del cliente.");
     } else {
       alert(j.message);
     }
@@ -285,12 +291,14 @@ export default function RecaudacionPage() {
             </p>
           </div>
         </div>
-        <Button
-          onClick={() => setIsOpen(true)}
-          className="mt-2 bg-green-500 text-white flex items-center"
-        >
-          <Plus className="mr-1" /> Registrar Pago
-        </Button>
+        <div className="flex gap-2 items-center mt-2">
+          <Button
+            onClick={() => setIsOpen(true)}
+            className="bg-green-500 text-white flex items-center"
+          >
+            <Plus className="mr-1" /> Registrar Pago
+          </Button>
+        </div>
       </div>
 
       
@@ -380,7 +388,9 @@ export default function RecaudacionPage() {
           <Table className="bg-white shadow rounded-lg overflow-hidden">
             <TableHeader>
               <TableRow>
-                <TableHead>Comprobante</TableHead>
+                <TableHead>
+                  Comprobante
+                </TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Plan</TableHead>
                 <TableHead>Fecha</TableHead>
@@ -569,6 +579,16 @@ export default function RecaudacionPage() {
           </form>
         </DialogContent>
       </Dialog>
+      {mesesPagados.length > 0 && (
+        <div className="mt-2 text-blue-700 text-sm font-semibold">
+          Pagando: {mesesPagados.map(({ mes, año }) => `${getMonthName(mes)} ${año}`).join(', ')}
+        </div>
+      )}
     </div>
   );
+}
+
+function getMonthName(mes: number) {
+  const meses = ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  return meses[mes] || "";
 }

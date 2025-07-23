@@ -68,7 +68,8 @@ export default class RecaudacionController {
             subject: "Comprobante de Pago - TelTec Net",
             html: comprobante.data,
           })
-          console.log("[Recaudacion] Comprobante enviado por email")
+          await PagoModel.marcarComprobanteEnviado(data.id)
+          console.log("[Recaudacion] Comprobante enviado por email y marcado como enviado")
         }
       } catch (error) {
         console.error("Error enviando comprobante por email:", error)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { NotificacionClienteController } from '@/lib/controllers/notiClienteController';
-import { WhatsAppService } from '@/lib/utils/whatsapp';
+import { TelegramService } from '@/lib/utils/telegram';
 
 export async function POST() {
   try {
@@ -16,7 +16,7 @@ export async function POST() {
     
     console.log(`📋 Notificaciones pendientes a procesar: ${pendientes.length}`);
 
-    const whatsappService = new WhatsAppService();
+    const telegramService = new TelegramService();
     
     let procesadas = 0;
     let errores = 0;
@@ -26,9 +26,12 @@ export async function POST() {
         let resultado;
 
         switch (notif.canal) {
-          case 'whatsapp':
-            resultado = await whatsappService.enviarMensaje(
-              notif.cliente_telefono || '', 
+          case 'telegram':
+            if (!notif.cliente_telegram_chat_id) {
+              throw new Error('Cliente no tiene chat_id de Telegram configurado');
+            }
+            resultado = await telegramService.enviarMensaje(
+              notif.cliente_telegram_chat_id,
               notif.mensaje
             );
             break;

@@ -38,6 +38,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Plus, Edit, Trash2 } from "lucide-react"
 import { validarCedulaEcuatoriana, formatearCedula, validarMayorEdad, calcularEdad, obtenerFechaMinima, obtenerFechaMaxima, formatearFecha } from "@/lib/utils"
+import { Switch } from '@/components/ui/switch'
 
 // Definir planes con precio
 const planes = [
@@ -93,6 +94,8 @@ export default function ClientesPage() {
   const [cedulaValida, setCedulaValida] = useState<boolean>(false);
   const [fechaError, setFechaError] = useState<string | null>(null);
   const [edadCalculada, setEdadCalculada] = useState<number | null>(null);
+  // Estado para el toggle de contrato
+  const [generarContrato, setGenerarContrato] = useState(true)
 
   const [formData, setFormData] = useState<FormData>({
     cedula: "",
@@ -292,6 +295,27 @@ export default function ClientesPage() {
         setFechaError(null)
         setEdadCalculada(null)
         loadData()
+        if (generarContrato && !editing) {
+          // Lógica para generar y descargar el contrato PDF
+          const contratoRes = await fetch(`/api/clientes/contrato`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(json.data),
+          })
+          if (contratoRes.ok) {
+            const blob = await contratoRes.blob()
+            const url = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `Contrato_${json.data.nombres}_${json.data.apellidos}.pdf`
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+            window.URL.revokeObjectURL(url)
+          } else {
+            alert('Cliente guardado, pero no se pudo generar el contrato PDF')
+          }
+        }
       } else {
         alert(json.message || "Error al guardar cliente")
       }
@@ -677,6 +701,10 @@ export default function ClientesPage() {
                     <SelectItem value="inactivo">Inactivo</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch id="generar-contrato" checked={generarContrato} onCheckedChange={setGenerarContrato} />
+                <Label htmlFor="generar-contrato">Generar contrato automáticamente</Label>
               </div>
               <DialogFooter className="flex justify-end space-x-2 pt-4">
                 <Button

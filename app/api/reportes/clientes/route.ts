@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { ClienteModel } from '@/lib/models/Cliente'
-// ... existing code ...
 
 export async function GET(req: Request) {
   try {

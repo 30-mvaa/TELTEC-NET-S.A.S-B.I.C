@@ -36,7 +36,12 @@ import {
   PieChart as PieChartIcon,
   FileText,
   Settings,
+  Mail,
 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
+import { ClienteModel } from '@/lib/models/Cliente'
 
 interface ReporteData {
   reporteFinanciero: {
@@ -68,6 +73,13 @@ interface ClienteData {
   sector: string;
   estado: string;
   fecha_registro: string;
+  // Añadido para reporte anual:
+  pagos_por_mes?: Record<number, { total: number; cantidad: number } | null>;
+  total_pagos_anio?: number;
+  // Añadido para reporte mensual:
+  monto_pagado_mes?: number;
+  cantidad_pagos_mes?: number;
+  fechas_pago_mes?: string[];
 }
 
 interface ClienteDetalladoData {
@@ -97,6 +109,32 @@ interface ReporteDetalladoData {
   };
 }
 
+// --- Tipos para pagos y gastos ---
+interface PagoData {
+  id: number;
+  numero_comprobante: string;
+  fecha_pago: string;
+  cliente_nombre: string;
+  cliente_cedula: string;
+  tipo_plan: string;
+  concepto: string;
+  metodo_pago: string;
+  monto: number;
+  estado: string;
+  comprobante_enviado: boolean;
+}
+
+interface GastoData {
+  id: number;
+  fecha_gasto: string;
+  descripcion: string;
+  categoria: string;
+  monto: number;
+  proveedor?: string;
+  metodo_pago?: string;
+  usuario_nombre?: string;
+}
+
 export default function ReportesPage() {
   // ----- lóg. año-base para salto en diciembre -----
   const now = new Date()
@@ -118,6 +156,62 @@ export default function ReportesPage() {
   const [reporteDetalladoData, setReporteDetalladoData] = useState<ReporteDetalladoData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Estados para pagos y gastos
+  const [pagosData, setPagosData] = useState<PagoData[]>([])
+  const [gastosData, setGastosData] = useState<GastoData[]>([])
+  const [pagosSearch, setPagosSearch] = useState("")
+  const [pagosMetodo, setPagosMetodo] = useState("todos")
+  const [pagosEstado, setPagosEstado] = useState("todos")
+  const [pagosPage, setPagosPage] = useState(1)
+  const [gastosSearch, setGastosSearch] = useState("")
+  const [gastosCategoria, setGastosCategoria] = useState("todas")
+  const [gastosPage, setGastosPage] = useState(1)
+  const [categoriasGasto, setCategoriasGasto] = useState<string[]>([])
+
+  // 1. Estado para selección múltiple de pagos
+  const [selectedPagos, setSelectedPagos] = useState<number[]>([])
+  const [isSendingComprobantes, setIsSendingComprobantes] = useState(false)
+
+  // --- Corrección y unificación de lógica de filtros y fetch ---
+  // Estados para el tipo de reporte de clientes
+  const [clientesReportType, setClientesReportType] = useState('general')
+
+  // Actualizar automáticamente el reporte de clientes al cambiar año o tipo
+  useEffect(() => {
+    if (activeTab === 'clientes') {
+      fetchClientesReport(clientesReportType)
+    }
+  }, [selectedYear, clientesReportType, activeTab])
+
+  // Botones de reporte de clientes
+  const handleClientesReport = (type: string) => {
+    setClientesReportType(type)
+  }
+
+  // --- Dashboard y financiero: actualizan con filtros globales ---
+  useEffect(() => {
+    if (activeTab === 'dashboard' || activeTab === 'dashboard-financiero') {
+      fetchReportData()
+    }
+  }, [selectedMonth, selectedYear, reportType, activeTab])
+
+  // --- Pagos y gastos: actualizan con filtros globales ---
+  useEffect(() => {
+    if (activeTab === 'pagos') {
+      fetchPagosData()
+    }
+  }, [activeTab, selectedMonth, selectedYear, pagosSearch, pagosMetodo, pagosEstado])
+
+  useEffect(() => {
+    if (activeTab === 'gastos') {
+      fetchGastosData()
+      fetchCategoriasGasto()
+    }
+  }, [activeTab, selectedMonth, selectedYear, gastosSearch, gastosCategoria])
+
+  const pagosPerPage = 10
+  const gastosPerPage = 10
   
   const router = useRouter()
 
@@ -158,17 +252,7 @@ export default function ReportesPage() {
     return months.find(m => m.value === selectedMonth)?.label || ""
   }
 
-
-
-
-
   // Fetch datos cuando cambien los filtros
-  useEffect(() => {
-    if (activeTab === "dashboard") {
-      fetchReportData()
-    }
-  }, [selectedMonth, selectedYear, reportType, activeTab])
-
   const fetchReportData = async () => {
     setIsLoading(true)
     setError(null)
@@ -250,15 +334,20 @@ export default function ReportesPage() {
       const data = await response.json()
       if (data.success && data.data) {
         if (action === 'detallado') {
-          setReporteDetalladoData(data.data)
-          setClientesData([])
+          setReporteDetalladoData({
+            clientes: data.data,
+            resumen: data.resumen,
+            anio: data.anio,
+            total_clientes: data.data.length
+          });
+          setClientesData([]);
         } else {
-          setClientesData(Array.isArray(data.data) ? data.data : [])
-          setReporteDetalladoData(null)
+          setClientesData(Array.isArray(data.data) ? data.data : []);
+          setReporteDetalladoData(null);
         }
-        return data
+        return data;
       } else {
-        throw new Error(data.error || 'Error al cargar reporte')
+        throw new Error(data.error || 'Error al cargar reporte');
       }
     } catch (err) {
       console.error("Error fetching clientes report:", err)
@@ -268,6 +357,63 @@ export default function ReportesPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // Fetch pagos y gastos al cambiar tab o filtros
+  const fetchPagosData = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const monthStr = selectedMonth.toString().padStart(2, '0')
+      const response = await fetch(`/api/reportes/pagos?month=${monthStr}&year=${selectedYear}`)
+      const data = await response.json()
+      // Ajuste: usar data.data si existe, si no usar data directamente
+      if (data.success && Array.isArray(data.data)) {
+        setPagosData(data.data)
+      } else if (Array.isArray(data)) {
+        setPagosData(data)
+      } else if (data.data && Array.isArray(data.data)) {
+        setPagosData(data.data)
+      } else {
+        setPagosData([])
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido")
+      setPagosData([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const fetchGastosData = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/reportes/gastos?month=${selectedMonth}&year=${selectedYear}`)
+      const data = await response.json()
+      if (data.success && Array.isArray(data.data)) {
+        setGastosData(data.data)
+      } else if (Array.isArray(data)) {
+        setGastosData(data)
+      } else {
+        setGastosData([])
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido")
+      setGastosData([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const fetchCategoriasGasto = async () => {
+    try {
+      const res = await fetch('/api/gastos/categorias')
+      if (res.ok) {
+        const data = await res.json()
+        setCategoriasGasto(Array.isArray(data) ? data : [])
+      }
+    } catch {}
   }
 
   // Preparar datos para gráficos
@@ -366,6 +512,122 @@ export default function ReportesPage() {
     }
   }
 
+  // --- Filtros y paginación pagos ---
+  const pagosFiltrados = pagosData.filter(p =>
+    (pagosSearch === "" ||
+      p.cliente_nombre.toLowerCase().includes(pagosSearch.toLowerCase()) ||
+      p.cliente_cedula.includes(pagosSearch) ||
+      p.numero_comprobante.toLowerCase().includes(pagosSearch.toLowerCase()) ||
+      p.concepto.toLowerCase().includes(pagosSearch.toLowerCase())
+    ) &&
+    (pagosMetodo === "todos" || p.metodo_pago === pagosMetodo) &&
+    (pagosEstado === "todos" || p.estado === pagosEstado)
+  )
+  const pagosTotalPages = Math.ceil(pagosFiltrados.length / pagosPerPage)
+  const pagosPageData = pagosFiltrados.slice((pagosPage-1)*pagosPerPage, pagosPage*pagosPerPage)
+  // --- Filtros y paginación gastos ---
+  const gastosFiltrados = gastosData.filter(g =>
+    (gastosSearch === "" ||
+      g.descripcion.toLowerCase().includes(gastosSearch.toLowerCase()) ||
+      g.categoria.toLowerCase().includes(gastosSearch.toLowerCase()) ||
+      (g.proveedor || "").toLowerCase().includes(gastosSearch.toLowerCase()) ||
+      (g.usuario_nombre || "").toLowerCase().includes(gastosSearch.toLowerCase())
+    ) &&
+    (gastosCategoria === "todas" || g.categoria === gastosCategoria)
+  )
+  const gastosTotalPages = Math.ceil(gastosFiltrados.length / gastosPerPage)
+  const gastosPageData = gastosFiltrados.slice((gastosPage-1)*gastosPerPage, gastosPage*gastosPerPage)
+  // --- Exportar CSV pagos ---
+  const exportarPagosCSV = () => {
+    const headers = ["Comprobante","Fecha","Cliente","Cédula","Plan","Concepto","Método","Monto","Estado"]
+    const rows = pagosFiltrados.map(p => [
+      p.numero_comprobante,
+      p.fecha_pago,
+      p.cliente_nombre,
+      p.cliente_cedula,
+      p.tipo_plan,
+      p.concepto,
+      p.metodo_pago,
+      p.monto,
+      p.estado
+    ])
+    const csvContent = [headers.join(','), ...rows.map(row => row.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = 'reporte_pagos.csv'
+    link.click()
+  }
+  // --- Exportar CSV gastos ---
+  const exportarGastosCSV = () => {
+    const headers = ["Fecha","Descripción","Categoría","Monto","Proveedor","Método","Responsable"]
+    const rows = gastosFiltrados.map(g => [
+      g.fecha_gasto,
+      g.descripcion,
+      g.categoria,
+      g.monto,
+      g.proveedor || '',
+      g.metodo_pago || '',
+      g.usuario_nombre || ''
+    ])
+    const csvContent = [headers.join(','), ...rows.map(row => row.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = 'reporte_gastos.csv'
+    link.click()
+  }
+
+  // Cambiar la lógica de selección y envío:
+  const pagosNoEnviadosPage = pagosPageData.filter(p => !p.comprobante_enviado)
+  const canShowEnviarComprobantes = pagosNoEnviadosPage.length > 0
+  const togglePago = (id: number) => {
+    const pago = pagosPageData.find(p => p.id === id)
+    if (!pago || pago.comprobante_enviado) return
+    setSelectedPagos(prev => prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id])
+  }
+  const toggleAllPagos = () => {
+    const allIds = pagosNoEnviadosPage.map(p => p.id)
+    const allSelected = allIds.every(id => selectedPagos.includes(id))
+    setSelectedPagos(allSelected ? selectedPagos.filter(id => !allIds.includes(id)) : [...selectedPagos, ...allIds.filter(id => !selectedPagos.includes(id))])
+  }
+  const enviarComprobantesMasivos = async () => {
+    // Solo enviar los que no han sido enviados
+    const idsAEnviar = selectedPagos.filter(id => {
+      const pago = pagosPageData.find(p => p.id === id)
+      return pago && !pago.comprobante_enviado
+    })
+    if (idsAEnviar.length === 0) return
+    const confirmMsg = `¿Seguro que deseas enviar comprobantes por email a ${idsAEnviar.length} pago(s) seleccionado(s)?`
+    if (!window.confirm(confirmMsg)) return
+    setIsSendingComprobantes(true)
+    try {
+      const res = await fetch('/api/reportes/pagos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pagoIds: idsAEnviar })
+      })
+      const data = await res.json()
+      if (data.success) {
+        const exitosos = data.resultados.filter((r: { success: boolean }) => r.success)
+        const fallidos = data.resultados.filter((r: { success: boolean }) => !r.success)
+        let msg = `✅ Comprobantes enviados: ${exitosos.length}`
+        if (fallidos.length > 0) {
+          msg += `\n❌ Errores: ${fallidos.length}\nIDs con error: ${fallidos.map((r: any) => r.id).join(', ')}`
+        }
+        alert(msg)
+      } else {
+        alert('Error al enviar comprobantes: ' + (data.message || ''))
+      }
+      setSelectedPagos([])
+      fetchPagosData()
+    } catch (err) {
+      alert('Error inesperado al enviar comprobantes')
+    } finally {
+      setIsSendingComprobantes(false)
+    }
+  }
+
   // Resetear filtros a valores base
   const resetFilters = () => {
     setSelectedMonth(now.getMonth() + 1)
@@ -399,23 +661,23 @@ export default function ReportesPage() {
 
           {/* Tabs de navegación */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="dashboard" className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Dashboard
+                <BarChart3 className="h-4 w-4" /> Dashboard
               </TabsTrigger>
               <TabsTrigger value="clientes" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Clientes
+                <Users className="h-4 w-4" /> Clientes
               </TabsTrigger>
-              <TabsTrigger value="financiero" className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4" />
-                Financiero
+             
+              <TabsTrigger value="pagos" className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" /> Pagos
               </TabsTrigger>
-              <TabsTrigger value="configuracion" className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Configuración
+             
+              <TabsTrigger value="dashboard-financiero" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" /> Dashboard Financiero
               </TabsTrigger>
+             
+             
             </TabsList>
 
             {/* Tab Dashboard */}
@@ -667,45 +929,17 @@ export default function ReportesPage() {
                     </CardContent>
                   </Card>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <Button 
-                      onClick={() => fetchClientesReport('general')}
-                      disabled={isLoading}
-                      className="flex items-center gap-2"
-                    >
-                      <FileText className="h-4 w-4" />
-                      Reporte General
+                  {/* Botones de reporte de clientes */}
+                  <div className="flex flex-wrap gap-4 mb-6 items-center justify-center">
+                    <Button onClick={() => handleClientesReport('general')} disabled={isLoading} className="flex items-center gap-2">
+                      <FileText className="h-4 w-4" /> Reporte General
                     </Button>
-                    
-                    <Button 
-                      onClick={() => fetchClientesReport('anual')}
-                      disabled={isLoading}
-                      className="flex items-center gap-2"
-                    >
-                      <Calendar className="h-4 w-4" />
-                      Reporte Anual
+                    <Button onClick={() => handleClientesReport('anual')} disabled={isLoading} className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" /> Reporte Anual
                     </Button>
-                    
-                    <Button 
-                      onClick={() => fetchClientesReport('mensual')}
-                      disabled={isLoading}
-                      className="flex items-center gap-2"
-                    >
-                      <Calendar className="h-4 w-4" />
-                      Reporte Mensual
+                    <Button onClick={() => handleClientesReport('mensual')} disabled={isLoading} className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" /> Reporte Mensual
                     </Button>
-                    
-                    <Button 
-                      onClick={() => fetchClientesReport('detallado')}
-                      disabled={isLoading}
-                      className="flex items-center gap-2"
-                    >
-                      <BarChart3 className="h-4 w-4" />
-                      Reporte Detallado
-                    </Button>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <Button 
                       onClick={exportarClientesCSV}
                       disabled={clientesData.length === 0 && !reporteDetalladoData}
@@ -715,41 +949,16 @@ export default function ReportesPage() {
                       Exportar CSV
                     </Button>
                   </div>
-
+                  
                   {/* Filtros específicos para clientes */}
 
 
                                     {/* Resumen del reporte detallado */}
-                  {reporteDetalladoData && (
-                    <Card className="mb-6">
-                      <CardHeader>
-                        <CardTitle>Resumen del Reporte Detallado - {selectedYear}</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-blue-600">{reporteDetalladoData.total_clientes}</div>
-                            <div className="text-sm text-gray-600">Total Clientes</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-green-600">${reporteDetalladoData.resumen.total_recaudado_anio.toLocaleString()}</div>
-                            <div className="text-sm text-gray-600">Total Recaudado</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-purple-600">{reporteDetalladoData.resumen.clientes_con_pagos}</div>
-                            <div className="text-sm text-gray-600">Clientes con Pagos</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-orange-600">{reporteDetalladoData.resumen.clientes_sin_pagos}</div>
-                            <div className="text-sm text-gray-600">Clientes sin Pagos</div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                  {/* Eliminar la opción y la lógica de reporteDetalladoData */}
 
                   {/* Tabla de resultados */}
-                  {clientesData.length > 0 && (
+                  {/* --- Renderizado de la tabla de clientes según el tipo de reporte --- */}
+                  {clientesReportType === 'general' && clientesData.length > 0 && (
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse border border-gray-300">
                         <thead>
@@ -757,10 +966,12 @@ export default function ReportesPage() {
                             <th className="border border-gray-300 px-4 py-2">ID</th>
                             <th className="border border-gray-300 px-4 py-2">Cédula</th>
                             <th className="border border-gray-300 px-4 py-2">Nombres</th>
+                            <th className="border border-gray-300 px-4 py-2">Apellidos</th>
                             <th className="border border-gray-300 px-4 py-2">Plan</th>
                             <th className="border border-gray-300 px-4 py-2">Precio</th>
                             <th className="border border-gray-300 px-4 py-2">Sector</th>
                             <th className="border border-gray-300 px-4 py-2">Estado</th>
+                            <th className="border border-gray-300 px-4 py-2">Fecha Registro</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -768,7 +979,8 @@ export default function ReportesPage() {
                             <tr key={`cliente-${cliente.id}-${index}`}>
                               <td className="border border-gray-300 px-4 py-2">{cliente.id}</td>
                               <td className="border border-gray-300 px-4 py-2">{cliente.cedula}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.nombres} {cliente.apellidos}</td>
+                              <td className="border border-gray-300 px-4 py-2">{cliente.nombres}</td>
+                              <td className="border border-gray-300 px-4 py-2">{cliente.apellidos}</td>
                               <td className="border border-gray-300 px-4 py-2">{cliente.tipo_plan}</td>
                               <td className="border border-gray-300 px-4 py-2">${cliente.precio_plan}</td>
                               <td className="border border-gray-300 px-4 py-2">{cliente.sector}</td>
@@ -777,6 +989,7 @@ export default function ReportesPage() {
                                   {cliente.estado}
                                 </Badge>
                               </td>
+                              <td className="border border-gray-300 px-4 py-2">{cliente.fecha_registro}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -784,8 +997,7 @@ export default function ReportesPage() {
                     </div>
                   )}
 
-                  {/* Tabla del reporte detallado */}
-                  {reporteDetalladoData && (
+                  {clientesReportType === 'anual' && clientesData.length > 0 && (
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse border border-gray-300">
                         <thead>
@@ -795,43 +1007,33 @@ export default function ReportesPage() {
                             <th className="border border-gray-300 px-4 py-2">Sector</th>
                             <th className="border border-gray-300 px-4 py-2">Estado</th>
                             {Array.from({ length: 12 }, (_, i) => (
-                              <th key={i} className="border border-gray-300 px-2 py-2 text-xs">
-                                {months[i].label}
-                              </th>
+                              <th key={i} className="border border-gray-300 px-2 py-2 text-xs">{months[i].label}</th>
                             ))}
                             <th className="border border-gray-300 px-4 py-2">Total Año</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {reporteDetalladoData.clientes.map((cliente, index) => (
-                            <tr key={`detallado-${cliente.id}-${index}`}>
+                          {clientesData.map((cliente, index) => (
+                            <tr key={`anual-${cliente.id}-${index}`}>
                               <td className="border border-gray-300 px-4 py-2">
-                                <div>
-                                  <div className="font-medium">{cliente.nombres} {cliente.apellidos}</div>
-                                  <div className="text-xs text-gray-500">{cliente.cedula}</div>
-                                </div>
+                                <div className="font-medium">{cliente.nombres} {cliente.apellidos}</div>
+                                <div className="text-xs text-gray-500">{cliente.cedula}</div>
                               </td>
-                              <td className="border border-gray-300 px-4 py-2">
-                                <div>
-                                  <div className="font-medium">{cliente.tipo_plan}</div>
-                                  <div className="text-xs text-gray-500">${cliente.precio_plan}</div>
-                                </div>
-                              </td>
+                              <td className="border border-gray-300 px-4 py-2">{cliente.tipo_plan}</td>
                               <td className="border border-gray-300 px-4 py-2">{cliente.sector}</td>
                               <td className="border border-gray-300 px-4 py-2">
-                                <Badge variant={cliente.estado === 'activo' ? 'default' : 'secondary'}>
-                                  {cliente.estado}
-                                </Badge>
+                                <Badge variant={cliente.estado === 'activo' ? 'default' : 'secondary'}>{cliente.estado}</Badge>
                               </td>
                               {Array.from({ length: 12 }, (_, i) => {
                                 const mes = i + 1;
-                                const pagoMes = cliente.pagos_por_mes[mes];
+                                const pagoMes = cliente.pagos_por_mes?.[mes];
                                 return (
                                   <td key={mes} className="border border-gray-300 px-2 py-2 text-xs text-center">
-                                    {pagoMes ? (
-                                      <div>
-                                        <div className="font-medium text-green-600">${pagoMes.total.toLocaleString()}</div>
-                                        <div className="text-gray-500">({pagoMes.cantidad})</div>
+                                    {pagoMes && (pagoMes.cantidad || pagoMes.total) ? (
+                                      <div className="font-medium text-green-600">
+                                        {pagoMes.cantidad ? `${pagoMes.cantidad} pago${pagoMes.cantidad > 1 ? 's' : ''}` : ''}
+                                        {pagoMes.cantidad && pagoMes.total ? ' / ' : ''}
+                                        {pagoMes.total ? `$${pagoMes.total}` : ''}
                                       </div>
                                     ) : (
                                       <div className="text-gray-400">-</div>
@@ -840,8 +1042,7 @@ export default function ReportesPage() {
                                 );
                               })}
                               <td className="border border-gray-300 px-4 py-2 font-bold">
-                                <div className="text-green-600">${cliente.total_pagado_anio.toLocaleString()}</div>
-                                <div className="text-xs text-gray-500">({cliente.total_pagos_anio} pagos)</div>
+                                <div className="text-green-600">{cliente.total_pagos_anio || 0}</div>
                               </td>
                             </tr>
                           ))}
@@ -850,63 +1051,232 @@ export default function ReportesPage() {
                     </div>
                   )}
 
-                  {clientesData.length === 0 && !reporteDetalladoData && !isLoading && (
-                    <div className="text-center py-8 text-gray-500">
-                      No hay datos de clientes para mostrar
+                  {clientesReportType === 'mensual' && clientesData.length > 0 && (
+                    <div className="overflow-x-auto">
+                      {/* Encabezado con el mes y año seleccionado */}
+                      <div className="mb-2 text-sm font-semibold text-blue-700">
+                        Reporte Mensual: {getMonthName()} {selectedYear}
+                      </div>
+                      <table className="w-full border-collapse border border-gray-300">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="border border-gray-300 px-4 py-2">Cliente</th>
+                            <th className="border border-gray-300 px-4 py-2">Cédula</th>
+                            <th className="border border-gray-300 px-4 py-2">Plan</th>
+                            <th className="border border-gray-300 px-4 py-2">Mes</th>
+                            <th className="border border-gray-300 px-4 py-2">Monto Pagado</th>
+                            <th className="border border-gray-300 px-4 py-2">Cantidad Pagos</th>
+                            <th className="border border-gray-300 px-4 py-2">Fechas de Pago</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {clientesData.map((cliente, index) => (
+                            <tr key={`mensual-${cliente.id}-${index}`}>
+                              <td className="border border-gray-300 px-4 py-2">{cliente.nombres} {cliente.apellidos}</td>
+                              <td className="border border-gray-300 px-4 py-2">{cliente.cedula}</td>
+                              <td className="border border-gray-300 px-4 py-2">{cliente.tipo_plan}</td>
+                              <td className="border border-gray-300 px-4 py-2">{getMonthName()}</td>
+                              <td className="border border-gray-300 px-4 py-2">${cliente.monto_pagado_mes || 0}</td>
+                              <td className="border border-gray-300 px-4 py-2">{cliente.cantidad_pagos_mes || 0}</td>
+                              <td className="border border-gray-300 px-4 py-2">{Array.isArray(cliente.fechas_pago_mes) ? cliente.fechas_pago_mes.join(', ') : ''}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
+                  )}
+
+                  {/* Mensaje si no hay datos */}
+                  {!isLoading && clientesData.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">No hay datos de clientes para mostrar</div>
                   )}
                 </CardContent>
               </Card>
             </TabsContent>
 
-            {/* Tab Financiero */}
-            <TabsContent value="financiero" className="space-y-6">
+            {/* Tab Pagos */}
+            <TabsContent value="pagos" className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <DollarSign className="h-5 w-5" />
-                    Reportes Financieros
+                    Reporte de Pagos
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Button 
-                      onClick={() => {
-                        setReportType('pagos')
-                        setActiveTab('dashboard')
-                      }}
-                      className="flex items-center gap-2"
-                    >
-                      <DollarSign className="h-4 w-4" />
-                      Reporte de Pagos
-                    </Button>
-                    
-                    <Button 
-                      onClick={() => {
-                        setReportType('gastos')
-                        setActiveTab('dashboard')
-                      }}
-                      className="flex items-center gap-2"
-                    >
-                      <TrendingDown className="h-4 w-4" />
-                      Reporte de Gastos
-                    </Button>
-                    
-                    <Button 
-                      onClick={() => {
-                        setReportType('general')
-                        setActiveTab('dashboard')
-                      }}
-                      className="flex items-center gap-2"
-                    >
-                      <BarChart3 className="h-4 w-4" />
-                      Reporte General
+                  <div className="flex flex-wrap gap-4 mb-4">
+                    <Input
+                      placeholder="Buscar por cliente, cédula, comprobante, concepto..."
+                      value={pagosSearch}
+                      onChange={e => { setPagosSearch(e.target.value); setPagosPage(1) }}
+                      className="max-w-xs"
+                    />
+                    <Select value={pagosMetodo} onValueChange={v => { setPagosMetodo(v); setPagosPage(1) }}>
+                      <SelectTrigger className="w-40"><SelectValue placeholder="Método de pago" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos los métodos</SelectItem>
+                        <SelectItem value="efectivo">Efectivo</SelectItem>
+                        <SelectItem value="transferencia">Transferencia</SelectItem>
+                        <SelectItem value="tarjeta">Tarjeta</SelectItem>
+                        <SelectItem value="otro">Otro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={pagosEstado} onValueChange={v => { setPagosEstado(v); setPagosPage(1) }}>
+                      <SelectTrigger className="w-40"><SelectValue placeholder="Estado" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos los estados</SelectItem>
+                        <SelectItem value="completado">Completado</SelectItem>
+                        <SelectItem value="pendiente">Pendiente</SelectItem>
+                        <SelectItem value="fallido">Fallido</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button onClick={exportarPagosCSV} disabled={pagosFiltrados.length === 0} className="flex items-center gap-2">
+                      <Download className="h-4 w-4" /> Exportar CSV
                     </Button>
                   </div>
-                  
-                  <p className="text-sm text-gray-600 mt-4">
-                    Selecciona un tipo de reporte financiero para ver los datos en el dashboard.
-                  </p>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>
+                            <input type="checkbox" checked={pagosNoEnviadosPage.length > 0 && pagosNoEnviadosPage.every(p => selectedPagos.includes(p.id))} onChange={toggleAllPagos} />
+                          </TableHead>
+                          <TableHead>Comprobante</TableHead>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Cédula</TableHead>
+                          <TableHead>Plan</TableHead>
+                          <TableHead>Concepto</TableHead>
+                          <TableHead>Método</TableHead>
+                          <TableHead>Monto</TableHead>
+                          <TableHead>Estado</TableHead>
+                          <TableHead>Comprobante Enviado</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pagosPageData.map((p, i) => (
+                          <TableRow key={p.id + '-' + i}>
+                            <TableCell>
+                              <input type="checkbox" checked={selectedPagos.includes(p.id)} onChange={() => togglePago(p.id)} disabled={p.comprobante_enviado} />
+                            </TableCell>
+                            <TableCell>{p.numero_comprobante}</TableCell>
+                            <TableCell>{p.fecha_pago}</TableCell>
+                            <TableCell>{p.cliente_nombre}</TableCell>
+                            <TableCell>{p.cliente_cedula}</TableCell>
+                            <TableCell>{p.tipo_plan}</TableCell>
+                            <TableCell>{p.concepto}</TableCell>
+                            <TableCell>{p.metodo_pago}</TableCell>
+                            <TableCell>${p.monto.toFixed(2)}</TableCell>
+                            <TableCell>{p.estado}</TableCell>
+                            <TableCell>{p.comprobante_enviado ? <span className="text-green-600 font-semibold">Enviado</span> : <span className="text-gray-400">Pendiente</span>}</TableCell>
+                          </TableRow>
+                        ))}
+                        {pagosPageData.length === 0 && (
+                          <TableRow><TableCell colSpan={11} className="text-center">No hay pagos para mostrar</TableCell></TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <Pagination className="mt-4">
+                    <PaginationContent>
+                      <PaginationPrevious onClick={() => setPagosPage(p => Math.max(1, p-1))} />
+                      {[...Array(pagosTotalPages)].map((_, i) => (
+                        <PaginationItem key={i}>
+                          <PaginationLink isActive={pagosPage === i+1} onClick={() => setPagosPage(i+1)}>{i+1}</PaginationLink>
+                        </PaginationItem>
+                      ))}
+                      <PaginationNext onClick={() => setPagosPage(p => Math.min(pagosTotalPages, p+1))} />
+                    </PaginationContent>
+                  </Pagination>
+                  {canShowEnviarComprobantes && (
+                    <Button
+                      onClick={enviarComprobantesMasivos}
+                      disabled={selectedPagos.filter(id => {
+                        const pago = pagosPageData.find(p => p.id === id)
+                        return pago && !pago.comprobante_enviado
+                      }).length === 0 || isSendingComprobantes}
+                      className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-semibold shadow-md mt-4 px-6 py-2 rounded-lg hover:from-blue-700 hover:to-cyan-600 transition-all"
+                    >
+                      <Mail className="h-4 w-4" />
+                      {isSendingComprobantes ? 'Enviando comprobantes...' : 'Enviar comprobantes por email'}
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab Gastos */}
+            <TabsContent value="gastos" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingDown className="h-5 w-5" />
+                    Reporte de Gastos
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-4 mb-4">
+                    <Input
+                      placeholder="Buscar por descripción, categoría, proveedor, responsable..."
+                      value={gastosSearch}
+                      onChange={e => { setGastosSearch(e.target.value); setGastosPage(1) }}
+                      className="max-w-xs"
+                    />
+                    <Select value={gastosCategoria} onValueChange={v => { setGastosCategoria(v); setGastosPage(1) }}>
+                      <SelectTrigger className="w-40"><SelectValue placeholder="Categoría" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todas">Todas las categorías</SelectItem>
+                        {categoriasGasto.map(cat => (
+                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button onClick={exportarGastosCSV} disabled={gastosFiltrados.length === 0} className="flex items-center gap-2">
+                      <Download className="h-4 w-4" /> Exportar CSV
+                    </Button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Descripción</TableHead>
+                          <TableHead>Categoría</TableHead>
+                          <TableHead>Monto</TableHead>
+                          <TableHead>Proveedor</TableHead>
+                          <TableHead>Método</TableHead>
+                          <TableHead>Responsable</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {gastosPageData.map((g, i) => (
+                          <TableRow key={g.id + '-' + i}>
+                            <TableCell>{g.fecha_gasto}</TableCell>
+                            <TableCell>{g.descripcion}</TableCell>
+                            <TableCell>{g.categoria}</TableCell>
+                            <TableCell>${g.monto.toFixed(2)}</TableCell>
+                            <TableCell>{g.proveedor}</TableCell>
+                            <TableCell>{g.metodo_pago}</TableCell>
+                            <TableCell>{g.usuario_nombre}</TableCell>
+                          </TableRow>
+                        ))}
+                        {gastosPageData.length === 0 && (
+                          <TableRow><TableCell colSpan={7} className="text-center">No hay gastos para mostrar</TableCell></TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <Pagination className="mt-4">
+                    <PaginationContent>
+                      <PaginationPrevious onClick={() => setGastosPage(p => Math.max(1, p-1))} />
+                      {[...Array(gastosTotalPages)].map((_, i) => (
+                        <PaginationItem key={i}>
+                          <PaginationLink isActive={gastosPage === i+1} onClick={() => setGastosPage(i+1)}>{i+1}</PaginationLink>
+                        </PaginationItem>
+                      ))}
+                      <PaginationNext onClick={() => setGastosPage(p => Math.min(gastosTotalPages, p+1))} />
+                    </PaginationContent>
+                  </Pagination>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -933,12 +1303,130 @@ export default function ReportesPage() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {/* Tab Dashboard Financiero Mensual */}
+            <TabsContent value="dashboard-financiero" className="space-y-6">
+              {/* Filtros */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Filter className="h-5 w-5" />
+                    Filtros de Reporte Financiero
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="text-sm font-medium">Mes</label>
+                      <Select value={selectedMonth.toString()} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar mes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {months.map((month) => (
+                            <SelectItem key={month.value} value={month.value.toString()}>
+                              {month.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Año</label>
+                      <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar año" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {generateYears().map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button variant="outline" onClick={resetFilters} className="w-full">
+                        Resetear
+                      </Button>
+                    </div>
+                    <div className="flex items-end">
+                      <Button onClick={exportarReporte} className="w-full flex items-center gap-2">
+                        <Download className="h-4 w-4" /> Exportar CSV
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              {/* Tarjetas KPI */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium opacity-90 flex items-center">
+                      <TrendingUp className="h-4 w-4 mr-2" />
+                      Ingresos Totales
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      ${(reporteData.reporteFinanciero?.ingresos || 0).toLocaleString()}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium opacity-90 flex items-center">
+                      <TrendingDown className="h-4 w-4 mr-2" />
+                      Gastos Totales
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      ${(reporteData.reporteFinanciero?.gastos || 0).toLocaleString()}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium opacity-90 flex items-center">
+                      <DollarSign className="h-4 w-4 mr-2" />
+                      Utilidad Neta
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      ${(reporteData.reporteFinanciero?.utilidad || 0).toLocaleString()}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+              {/* Gráfico de barras */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Comparativo Mensual</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={datosFinancieros}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Monto']} />
+                      <Bar dataKey="monto" fill="#3b82f6" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </TabsContent>
           </Tabs>
         </div>
       </div>
     </div>
   )
 }
+
+
 
 
 

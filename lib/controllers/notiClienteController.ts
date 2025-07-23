@@ -7,10 +7,17 @@ export class NotificacionClienteController {
     try {
       const queryText = `
         SELECT 
-          n.*,
-          CONCAT(c.nombres, ' ', c.apellidos) as cliente_nombre,
+          n.id,
+          n.cliente_id,
+          n.tipo,
+          n.mensaje,
+          n.estado,
+          n.canal,
+          n.fecha_creacion,
+          c.nombres || ' ' || c.apellidos as cliente_nombre,
           c.telefono as cliente_telefono,
-          c.email as cliente_email
+          c.email as cliente_email,
+          c.telegram_chat_id as cliente_telegram_chat_id
         FROM notificaciones n
         LEFT JOIN clientes c ON n.cliente_id = c.id
         ORDER BY n.fecha_creacion DESC
@@ -75,7 +82,7 @@ export class NotificacionClienteController {
         data.cliente_id,
         data.tipo,
         data.mensaje,
-        data.canal || 'whatsapp',
+        data.canal || 'telegram',
         'pendiente',
         new Date().toISOString(),
         data.fecha_programada || null,
@@ -121,7 +128,8 @@ export class NotificacionClienteController {
           n.*,
           CONCAT(c.nombres, ' ', c.apellidos) as cliente_nombre,
           c.telefono as cliente_telefono,
-          c.email as cliente_email
+          c.email as cliente_email,
+          c.telegram_chat_id as cliente_telegram_chat_id
         FROM notificaciones n
         LEFT JOIN clientes c ON n.cliente_id = c.id
         WHERE n.estado = 'pendiente' 
@@ -149,7 +157,7 @@ export class NotificacionClienteController {
                  ', le recordamos que se aproxima la fecha de pago de su servicio de internet. ',
                  'Por favor acérquese a cancelar. Precio: $', c.precio_plan, 
                  '. ¡Gracias por su preferencia! - TelTec'),
-          'whatsapp',
+          'telegram',
           'pendiente',
           NOW()
         FROM (
@@ -190,7 +198,7 @@ export class NotificacionClienteController {
                  ', su pago está vencido. Su servicio de internet será posteriormente cortado. ',
                  'Acérquese a cancelar el servicio para restablecer la conexión. ',
                  'Monto: $', c.precio_plan, ' - TelTec'),
-          'whatsapp',
+          'telegram',
           'pendiente',
           NOW()
         FROM (
@@ -231,7 +239,7 @@ export class NotificacionClienteController {
                  ': Su servicio de internet será suspendido por falta de pago. ',
                  'Comuníquese inmediatamente con nosotros para evitar la suspensión. ',
                  'TelTec - Teléfono: 0999999999'),
-          'whatsapp',
+          'telegram',
           'pendiente',
           NOW()
         FROM (
@@ -291,7 +299,7 @@ export class NotificacionClienteController {
           COUNT(CASE WHEN estado = 'pendiente' THEN 1 END) as pendientes,
           COUNT(CASE WHEN estado = 'enviado' THEN 1 END) as enviadas,
           COUNT(CASE WHEN estado = 'fallido' THEN 1 END) as fallidas,
-          COUNT(CASE WHEN canal = 'whatsapp' THEN 1 END) as whatsapp,
+          COUNT(CASE WHEN canal = 'telegram' THEN 1 END) as telegram,
           COUNT(CASE WHEN canal = 'email' THEN 1 END) as email,
           COUNT(CASE WHEN canal = 'sms' THEN 1 END) as sms
         FROM notificaciones
@@ -315,7 +323,7 @@ export class NotificacionClienteController {
           c.id,
           $1,
           $2,
-          'whatsapp',
+          'telegram',
           'pendiente',
           NOW()
         FROM clientes c

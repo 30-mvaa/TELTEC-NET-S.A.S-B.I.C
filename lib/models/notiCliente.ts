@@ -6,10 +6,11 @@ export interface NotificacionCliente {
   cliente_id: number;
   cliente_nombre: string;
   cliente_telefono: string;
+  cliente_telegram_chat_id?: string;
   tipo: "pago_proximo" | "pago_vencido" | "corte_servicio" | "promocion" | "mantenimiento"; // Se agrega 'tipo'
   mensaje: string;
   estado: "pendiente" | "enviado" | "fallido";
-  canal: "whatsapp" | "email" | "sms";
+  canal: "telegram" | "email" | "sms";
   fecha_envio?: string;
   fecha_programada?: string;
   fecha_creacion: string;

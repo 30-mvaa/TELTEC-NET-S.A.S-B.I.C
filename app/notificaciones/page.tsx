@@ -53,11 +53,12 @@ interface Notificacion {
   cliente_id: number
   cliente_nombre: string
   cliente_telefono: string
+  cliente_telegram_chat_id?: string
   tipo: "pago_proximo" | "pago_vencido" | "corte_servicio" | "promocion" | "mantenimiento"
   mensaje: string
   fecha_envio?: string
   estado: "pendiente" | "enviado" | "fallido"
-  canal: "whatsapp" | "email" | "sms"
+  canal: "telegram" | "email" | "sms"
   fecha_creacion: string
 }
 
@@ -79,7 +80,7 @@ interface Estadisticas {
   pendientes: number
   enviadas: number
   fallidas: number
-  whatsapp: number
+  telegram: number
   email: number
   sms: number
 }
@@ -104,15 +105,17 @@ async function fetchEstadisticas(): Promise<Estadisticas> {
   return res.json()
 }
 
-async function enviarWhatsAppApi(to: string, mensaje: string) {
-  const res = await fetch("/api/notificaciones/send-whatsapp", {
+
+
+async function enviarTelegramApi(to: string, mensaje: string) {
+  const res = await fetch("/api/notificaciones/send-telegram", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ to, body: mensaje }),
   });
   if (!res.ok) {
     const err = await res.json();
-    throw new Error(err.error || "Error al enviar WhatsApp");
+    throw new Error(err.error || "Error al enviar Telegram");
   }
 }
 
@@ -152,7 +155,7 @@ export default function NotificacionesPage() {
     cliente_id: null,
     tipo: "pago_proximo",
     mensaje: "",
-    canal: "whatsapp",
+    canal: "telegram",
   })
   const [masivaData, setMasivaData] = useState<{
     tipo: Notificacion["tipo"]
@@ -235,7 +238,7 @@ export default function NotificacionesPage() {
         cliente_id: null,
         tipo: "pago_proximo",
         mensaje: "",
-        canal: "whatsapp",
+        canal: "telegram",
       })
     } catch (error) {
       console.error("Error:", error)
@@ -270,8 +273,8 @@ export default function NotificacionesPage() {
     if (!notif) return;
 
     try {
-      if (notif.canal === 'whatsapp') {
-        await enviarWhatsAppApi(notif.cliente_telefono, notif.mensaje);
+      if (notif.canal === 'telegram') {
+        await enviarTelegramApi(notif.cliente_telegram_chat_id || '', notif.mensaje);
       }
       await fetch(`/api/notificaciones/${id}/mark-enviado`, { method: "PATCH" });
       await cargarDatos()
@@ -345,6 +348,16 @@ export default function NotificacionesPage() {
     return <Badge className={config.color}>{config.label}</Badge>
   }
 
+  const getCanalBadge = (canal: Notificacion["canal"]) => {
+    const configs = {
+      telegram: { color: "bg-blue-100 text-blue-800", label: "TELEGRAM" },
+      email: { color: "bg-purple-100 text-purple-800", label: "EMAIL" },
+      sms: { color: "bg-orange-100 text-orange-800", label: "SMS" }
+    }
+    const config = configs[canal] || { color: "bg-gray-100 text-gray-800", label: "DESCONOCIDO" }
+    return <Badge className={config.color}>{config.label}</Badge>
+  }
+
   if (loading && !estadisticas) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
@@ -373,7 +386,7 @@ export default function NotificacionesPage() {
               </Button>
               <div>
                 <h1 className="text-3xl font-bold text-slate-900">Sistema de Notificaciones</h1>
-                <p className="text-slate-600">WhatsApp automatizado para TelTec</p>
+                <p className="text-slate-600">Telegram automatizado para TelTec</p>
               </div>
             </div>
             <div className="flex space-x-2">
@@ -490,6 +503,22 @@ export default function NotificacionesPage() {
                               {tipo.label}
                             </SelectItem>
                           ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="canal">Canal</Label>
+                      <Select
+                        value={formData.canal}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, canal: value as Notificacion["canal"] }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="telegram">Telegram</SelectItem>
+                          <SelectItem value="email">Email</SelectItem>
+                          <SelectItem value="sms">SMS</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -631,6 +660,7 @@ export default function NotificacionesPage() {
                       <TableRow>
                         <TableHead>Cliente</TableHead>
                         <TableHead>Tipo</TableHead>
+                        <TableHead>Canal</TableHead>
                         <TableHead>Mensaje</TableHead>
                         <TableHead>Estado</TableHead>
                         <TableHead>Fecha</TableHead>
@@ -648,6 +678,9 @@ export default function NotificacionesPage() {
                             </div>
                           </TableCell>
                           <TableCell>{getTipoBadge(notif.tipo)}</TableCell>
+                          <TableCell>
+                            {getCanalBadge(notif.canal)}
+                          </TableCell>
                           <TableCell className="max-w-xs">
                             <div className="truncate" title={notif.mensaje}>
                               {notif.mensaje}
@@ -752,12 +785,12 @@ export default function NotificacionesPage() {
                         <li>• Corte de servicio: Después de 35 días</li>
                       </ul>
                     </div>
+
                     <div>
-                      <h3 className="text-lg font-semibold mb-2">Configuración Twilio</h3>
+                      <h3 className="text-lg font-semibold mb-2">Configuración Telegram</h3>
                       <ul className="space-y-2 text-sm">
-                        <li>• Account SID: {process.env.TWILIO_ACCOUNT_SID ? "Configurado" : "No configurado"}</li>
-                        <li>• Auth Token: {process.env.TWILIO_AUTH_TOKEN ? "Configurado" : "No configurado"}</li>
-                        <li>• Número WhatsApp: {process.env.TWILIO_PHONE_NUMBER || "No configurado"}</li>
+                        <li>• Bot Token: {process.env.TELEGRAM_BOT_TOKEN ? "Configurado" : "No configurado"}</li>
+                        <li>• Estado: {process.env.TELEGRAM_BOT_TOKEN ? "Activo" : "Inactivo"}</li>
                       </ul>
                     </div>
                   </div>

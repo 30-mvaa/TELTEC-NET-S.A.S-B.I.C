@@ -1,24 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { WhatsAppService } from '@/lib/utils/whatsapp';
+import { TelegramService } from '@/lib/utils/telegram';
 
 export async function POST(request: NextRequest) {
   try {
-    const { to, body, templateSid, variables } = await request.json();
+    const { to, body, template, variables } = await request.json();
 
-    if (!to || (!body && !templateSid)) {
+    if (!to || (!body && !template)) {
       return NextResponse.json(
         { error: 'Faltan parámetros requeridos' },
         { status: 400 }
       );
     }
 
-    const whatsappService = new WhatsAppService();
+    const telegramService = new TelegramService();
     let result;
 
-    if (templateSid) {
-      result = await whatsappService.enviarMensajeTemplate(to, templateSid, variables);
+    if (template) {
+      result = await telegramService.enviarMensajeTemplate(to, template, variables);
     } else {
-      result = await whatsappService.enviarMensaje(to, body);
+      result = await telegramService.enviarMensaje(to, body);
     }
 
     if (result.success) {
@@ -34,15 +34,10 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error: any) {
-    console.error('Error al enviar WhatsApp:', error);
+    console.error('Error al enviar Telegram:', error);
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }
     );
   }
-
-
-
-  
-}
-
+} 

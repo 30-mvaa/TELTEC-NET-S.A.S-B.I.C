@@ -101,7 +101,11 @@ export async function DELETE(request: NextRequest) {
     if (result.success) {
       return NextResponse.json(result, { status: 200 })
     } else {
-      return NextResponse.json(result, { status: 404 })
+      // Mensaje especial si es admin principal
+      return NextResponse.json(
+        { success: false, message: "No se puede eliminar el administrador principal del sistema." },
+        { status: 403 }
+      )
     }
   } catch (error) {
     console.error("Error en API de eliminación:", error)

@@ -102,6 +102,14 @@ export class UserModel {
   }
 
   static async delete(id: number): Promise<boolean> {
+    // Obtener el admin principal
+    const adminPrincipal = await query(
+      `SELECT id FROM usuarios WHERE rol = 'administrador' ORDER BY id ASC LIMIT 1`
+    );
+    if (adminPrincipal.rows.length && adminPrincipal.rows[0].id === id) {
+      // No permitir eliminar el admin principal
+      return false;
+    }
     const result = await query("DELETE FROM usuarios WHERE id = $1", [id])
      return (result.rowCount ?? 0) > 0
   }
@@ -240,6 +248,14 @@ export class UserModel {
   }
 
   static async delete(id: number): Promise<boolean> {
+    // Obtener el admin principal
+    const adminPrincipal = await query(
+      `SELECT id FROM usuarios WHERE rol = 'administrador' ORDER BY id ASC LIMIT 1`
+    );
+    if (adminPrincipal.rows.length && adminPrincipal.rows[0].id === id) {
+      // No permitir eliminar el admin principal
+      return false;
+    }
     const res = await query("DELETE FROM usuarios WHERE id=$1", [id])
     return (res.rowCount ?? 0) > 0
   }

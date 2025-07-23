@@ -123,25 +123,25 @@ export default function UsuariosPage() {
   // Asegúrate de que solo exista esta declaración
 const handleDelete = async (id: number) => {
   const adminsCount = usuarios.filter(u => u.rol === 'administrador').length;
-  
   if (adminsCount <= 1) {
     alert('No se puede realizar esta acción,Debe haber al menos un administrador en el sistema');
     return;
   }
-
   if (!confirm('¿Eliminar este usuario?')) return;
-  
   const res = await fetch('/api/usuarios', { 
     method:'DELETE', 
     headers: { 'Content-Type':'application/json' }, 
     body: JSON.stringify({ id }) 
   });
-  
   const json = await res.json();
   if (res.ok && json.success) {
     fetchUsuarios();
   } else {
-    alert(json.message);
+    if (json.message && json.message.includes('principal')) {
+      alert('No se puede eliminar el administrador principal del sistema.');
+    } else {
+      alert(json.message);
+    }
   }
 }
 
