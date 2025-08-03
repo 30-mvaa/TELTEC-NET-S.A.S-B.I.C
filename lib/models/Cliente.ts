@@ -22,7 +22,7 @@ export class ClienteModel {
   static async getAll(): Promise<Cliente[]> {
     const result = await query(`
       SELECT id, cedula, nombres, apellidos, tipo_plan, precio_plan, fecha_nacimiento, 
-             direccion, sector, email, telefono, estado, fecha_registro, fecha_actualizacion
+             direccion, sector, email, telefono, telegram_chat_id, estado, fecha_registro, fecha_actualizacion
       FROM public.clientes 
       ORDER BY fecha_registro DESC
     `)
@@ -61,8 +61,8 @@ export class ClienteModel {
       `
       INSERT INTO public.clientes (
         cedula, nombres, apellidos, tipo_plan, precio_plan, fecha_nacimiento,
-        direccion, sector, email, telefono, estado
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        direccion, sector, email, telefono, telegram_chat_id, estado
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *
       `,
       [
@@ -76,6 +76,7 @@ export class ClienteModel {
         clienteData.sector,
         clienteData.email,
         clienteData.telefono,
+        clienteData.telegram_chat_id || null,
         clienteData.estado || "activo",
       ],
     )

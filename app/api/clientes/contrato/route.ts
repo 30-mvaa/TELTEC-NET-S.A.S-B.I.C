@@ -5,7 +5,10 @@ import path from 'path'
 
 export async function POST(req: NextRequest) {
   try {
+    console.log('🔄 API de contrato llamada');
     const data = await req.json()
+    console.log('📋 Datos recibidos:', data);
+    
     // Datos del cliente
     const {
       nombres,
@@ -125,9 +128,13 @@ export async function POST(req: NextRequest) {
 
     const pdfBuffer = await new Promise<Buffer>((resolve) => {
       doc.on('end', () => {
+        console.log('✅ PDF generado exitosamente');
         resolve(Buffer.concat(buffers))
       })
     })
+
+    console.log('📄 Tamaño del PDF:', pdfBuffer.length, 'bytes');
+    console.log('📁 Nombre del archivo:', `Contrato_${nombres}_${apellidos}.pdf`);
 
     return new NextResponse(pdfBuffer, {
       status: 200,
@@ -137,7 +144,8 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (e) {
-    console.error('Error generando contrato PDF:', e)
+    console.error('❌ Error generando contrato PDF:', e)
+    console.error('📄 Stack trace:', (e as Error).stack)
     return new NextResponse(
       JSON.stringify({ success: false, message: 'Error generando contrato PDF', error: String(e) }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }

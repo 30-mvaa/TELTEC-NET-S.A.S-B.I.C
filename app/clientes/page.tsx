@@ -59,6 +59,7 @@ interface Cliente {
   sector: string
   email: string
   telefono: string
+  telegram_chat_id?: string
   estado: "activo" | "inactivo" | "suspendido"
   fecha_creacion: string
   fecha_actualizacion: string
@@ -75,6 +76,7 @@ interface FormData {
   sector: string
   email: string
   telefono: string
+  telegram_chat_id: string
   estado: Cliente["estado"]
 }
 
@@ -108,6 +110,7 @@ export default function ClientesPage() {
     sector: "",
     email: "",
     telefono: "",
+    telegram_chat_id: "",
     estado: "activo",
   })
 
@@ -225,6 +228,7 @@ export default function ClientesPage() {
       sector: "",
       email: "",
       telefono: "",
+      telegram_chat_id: "",
       estado: "activo",
     })
     setIsDialogOpen(true)
@@ -288,6 +292,7 @@ export default function ClientesPage() {
           sector: "",
           email: "",
           telefono: "",
+          telegram_chat_id: "",
           estado: "activo",
         })
         setCedulaError(null)
@@ -296,14 +301,23 @@ export default function ClientesPage() {
         setEdadCalculada(null)
         loadData()
         if (generarContrato && !editing) {
+          console.log('🔄 Generando contrato PDF...')
+          console.log('📋 Datos del cliente:', json.data)
+          
           // Lógica para generar y descargar el contrato PDF
           const contratoRes = await fetch(`/api/clientes/contrato`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(json.data),
           })
+          
+          console.log('📊 Respuesta del servidor:', contratoRes.status, contratoRes.statusText)
+          
           if (contratoRes.ok) {
+            console.log('✅ Contrato generado exitosamente')
             const blob = await contratoRes.blob()
+            console.log('📄 Blob creado:', blob.size, 'bytes')
+            
             const url = window.URL.createObjectURL(blob)
             const a = document.createElement('a')
             a.href = url
@@ -312,9 +326,15 @@ export default function ClientesPage() {
             a.click()
             a.remove()
             window.URL.revokeObjectURL(url)
+            console.log('📥 Descarga iniciada')
           } else {
+            console.error('❌ Error generando contrato:', contratoRes.status, contratoRes.statusText)
+            const errorText = await contratoRes.text()
+            console.error('📄 Error details:', errorText)
             alert('Cliente guardado, pero no se pudo generar el contrato PDF')
           }
+        } else {
+          console.log('ℹ️ No se generará contrato:', { generarContrato, editing })
         }
       } else {
         alert(json.message || "Error al guardar cliente")
@@ -337,6 +357,7 @@ export default function ClientesPage() {
       sector: c.sector,
       email: c.email,
       telefono: c.telefono,
+      telegram_chat_id: c.telegram_chat_id || "",
       estado: c.estado,
     })
     setIsDialogOpen(true)
@@ -443,6 +464,7 @@ export default function ClientesPage() {
                 <TableHead>Plan</TableHead>
                 <TableHead>Precio</TableHead>
                 <TableHead>Contacto</TableHead>
+                <TableHead>Telegram</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Acciones</TableHead>
               </TableRow>
@@ -461,6 +483,21 @@ export default function ClientesPage() {
                       <div className="text-gray-500 text-xs">
                         {formatearFecha(c.fecha_nacimiento)} ({calcularEdad(c.fecha_nacimiento)} años)
                       </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm">
+                      {c.telegram_chat_id ? (
+                        <div className="flex items-center space-x-1">
+                          <span className="text-green-600">✓</span>
+                          <span className="text-xs text-gray-600">Configurado</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-1">
+                          <span className="text-gray-400">-</span>
+                          <span className="text-xs text-gray-500">No configurado</span>
+                        </div>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -682,6 +719,29 @@ export default function ClientesPage() {
                   maxLength={10} // Opcional: para limitar a 10 dígitos
                   required
                 />
+              </div>
+
+              <div>
+                <Label htmlFor="telegram_chat_id">
+                  Chat ID de Telegram 
+                  <span className="text-gray-500 text-xs ml-1">(Opcional)</span>
+                </Label>
+                <Input
+                  id="telegram_chat_id"
+                  value={formData.telegram_chat_id}
+                  onChange={e => {
+                    const value = e.target.value;
+                    // Permitir solo números y caracteres válidos para chat_id
+                    if (/^[0-9-]*$/.test(value)) {
+                      setFormData({ ...formData, telegram_chat_id: value });
+                    }
+                  }}
+                  placeholder="Ej: 123456789 o -1001234567890"
+                  className="text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Para recibir notificaciones por Telegram. Dejar vacío si no desea notificaciones.
+                </p>
               </div>
 
               <div>

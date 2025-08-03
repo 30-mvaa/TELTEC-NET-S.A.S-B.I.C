@@ -271,18 +271,25 @@ export default function NotificacionesPage() {
   const enviarNotificacion = async (id: number) => {
     const notif = notificaciones.find((n) => n.id === id);
     if (!notif) return;
-
+  
     try {
       if (notif.canal === 'telegram') {
-        await enviarTelegramApi(notif.cliente_telegram_chat_id || '', notif.mensaje);
+        if (!notif.cliente_telegram_chat_id || notif.cliente_telegram_chat_id.trim() === '') {
+          setError("Este cliente no tiene configurado el chat_id de Telegram.");
+          return;
+        }
+  
+        await enviarTelegramApi(notif.cliente_telegram_chat_id, notif.mensaje);
       }
+  
       await fetch(`/api/notificaciones/${id}/mark-enviado`, { method: "PATCH" });
-      await cargarDatos()
+      await cargarDatos();
     } catch (error) {
-      console.error("Error:", error)
-      setError("Error al enviar la notificación")
+      console.error("Error:", error);
+      setError("Error al enviar la notificación");
     }
-  }
+  };
+  
 
   // Procesar todas las notificaciones
   const handleProcesarNotificaciones = async () => {

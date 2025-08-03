@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS clientes (
     sector VARCHAR(100) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     telefono VARCHAR(20) NOT NULL,
+    telegram_chat_id VARCHAR(50),
     estado VARCHAR(20) DEFAULT 'activo' CHECK (estado IN ('activo', 'inactivo', 'suspendido')),
     fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
