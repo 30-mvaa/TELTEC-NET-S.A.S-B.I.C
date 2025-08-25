@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -11,6 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { Pagination } from "@/components/ui/pagination"
+import { ExportButtons } from "@/components/ui/export-buttons"
 import { 
   ArrowLeft, 
   Search, 
@@ -23,10 +26,24 @@ import {
   Eye,
   Calendar,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  User,
+  Phone,
+  Mail,
+  MapPin,
+  CreditCard,
+  FileText,
+  BarChart3,
+  PieChart,
+  TrendingDown,
+  CheckCircle,
+  XCircle,
+  Clock as ClockIcon,
+  X
 } from "lucide-react"
+import { apiRequest, API_ENDPOINTS, isAuthenticated } from "@/lib/config/api"
 
-type ClienteDeuda = {
+interface ClienteDeuda {
   id: number
   cedula: string
   nombres: string
@@ -38,11 +55,14 @@ type ClienteDeuda = {
   estado_pago: string
   meses_pendientes: number
   monto_total_deuda: number
+  total_pagado: number
   fecha_ultimo_pago: string | null
   fecha_vencimiento_pago: string | null
+  estado: string
+  sector: string
 }
 
-type CuotaMensual = {
+interface CuotaMensual {
   id: number
   mes: number
   año: number
@@ -50,17 +70,21 @@ type CuotaMensual = {
   fecha_vencimiento: string
   fecha_pago: string | null
   estado: string
+  pago_id: number | null
 }
 
-type HistorialPago = {
+interface HistorialPago {
   id: number
+  pago_id: number
+  fecha: string
+  descripcion: string
   monto_pagado: number
   concepto: string
   fecha_pago: string
   meses_cubiertos: number
 }
 
-type EstadisticasDeudas = {
+interface EstadisticasDeudas {
   total_clientes: number
   clientes_al_dia: number
   clientes_vencidos: number
@@ -68,48 +92,251 @@ type EstadisticasDeudas = {
   total_deuda: number
   promedio_deuda: number
   cuotas_vencidas: number
+  deuda_por_estado: Array<{
+    estado: string
+    cantidad: number
+    total_deuda: number
+  }>
+  top_deudores: Array<{
+    nombres: string
+    apellidos: string
+    cedula: string
+    monto_deuda: number
+    estado_pago: string
+  }>
 }
 
 export default function DeudasPage() {
   const router = useRouter()
 
-  // Estados
+  // Estados principales
   const [clientes, setClientes] = useState<ClienteDeuda[]>([])
   const [filtered, setFiltered] = useState<ClienteDeuda[]>([])
-  const [stats, setStats] = useState<EstadisticasDeudas>({
-    total_clientes: 0,
-    clientes_al_dia: 0,
-    clientes_vencidos: 0,
-    clientes_proximo_vencimiento: 0,
-    total_deuda: 0,
-    promedio_deuda: 0,
-    cuotas_vencidas: 0
-  })
-  const [loading, setLoading] = useState(false)
+  const [stats, setStats] = useState<EstadisticasDeudas | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  
+  // Estados de búsqueda y filtros
   const [searchTerm, setSearchTerm] = useState("")
-  const [fEstado, setFEstado] = useState("todos")
+  const [filterEstado, setFilterEstado] = useState("todos")
+  
+  // Estados del modal de detalles
   const [selectedCliente, setSelectedCliente] = useState<ClienteDeuda | null>(null)
   const [cuotasCliente, setCuotasCliente] = useState<CuotaMensual[]>([])
   const [historialCliente, setHistorialCliente] = useState<HistorialPago[]>([])
   const [showDetails, setShowDetails] = useState(false)
+  const [detailsLoading, setDetailsLoading] = useState(false)
+
+  // Estados del modal de configuración
   const [showConfig, setShowConfig] = useState(false)
   const [config, setConfig] = useState({
     dia_vencimiento: 5,
     dias_gracia: 3
   })
 
-  // Carga inicial
-  useEffect(() => {
-    if (!localStorage.getItem("user")) {
-      router.push("/")
-      return
+  // Estados para paginación
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const [pagination, setPagination] = useState({
+    page: 1,
+    page_size: 50,
+    total_count: 0,
+    total_pages: 1,
+    has_next: false,
+    has_previous: false,
+    next_page: null,
+    previous_page: null
+  })
+
+  // Función de debounce para la búsqueda
+  const debounce = useCallback((func: Function, delay: number) => {
+    let timeoutId: NodeJS.Timeout
+    return (...args: any[]) => {
+      clearTimeout(timeoutId)
+      timeoutId = setTimeout(() => func.apply(null, args), delay)
     }
-    loadAll()
-  }, [router])
+  }, [])
+
+  // Función de búsqueda con debounce
+  const debouncedSearch = useCallback(
+    debounce((term: string) => {
+      setSearching(false)
+    }, 300),
+    []
+  )
+
+  // Manejar cambios en el término de búsqueda
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setSearchTerm(value)
+    setSearching(true)
+    debouncedSearch(value)
+  }
+
+  // Limpiar búsqueda
+  const clearSearch = () => {
+    setSearchTerm("")
+    setSearching(false)
+  }
+
+  // Verificar autenticación
+  const checkAuth = () => {
+    if (!isAuthenticated()) {
+      router.push("/")
+      return false
+    }
+    return true
+  }
+
+  // Cargar datos principales
+  const loadData = async (page = 1, size = 50) => {
+    if (!checkAuth()) return
+    
+    setLoading(true)
+    setError(null)
+    try {
+      // Primero actualizar los estados de deudas basado en pagos reales
+      try {
+        const updateResponse = await apiRequest(API_ENDPOINTS.DEUDAS_ACTUALIZAR_ESTADOS, {
+          method: 'POST'
+        })
+        console.log("✅ Estados actualizados:", updateResponse)
+      } catch (e) {
+        console.warn("No se pudieron actualizar los estados automáticamente:", e)
+      }
+      
+      // Construir parámetros de paginación
+      const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: size.toString()
+      })
+      
+      // Agregar filtros si están presentes
+      if (searchTerm) {
+        params.append('search', searchTerm)
+      }
+      if (filterEstado && filterEstado !== 'todos') {
+        params.append('estado', filterEstado)
+      }
+      
+      const [clientesRes, statsRes] = await Promise.all([
+        apiRequest(`${API_ENDPOINTS.DEUDAS}?${params.toString()}&_t=${Date.now()}`),
+        apiRequest(API_ENDPOINTS.DEUDAS_STATS)
+      ])
+
+      if (clientesRes.success) {
+        console.log("📊 Clientes cargados:", clientesRes.data.length)
+        console.log("💰 Primer cliente con pagos:", clientesRes.data[0])
+
+        setClientes(clientesRes.data)
+        setFiltered(clientesRes.data)
+        
+        // Actualizar información de paginación
+        if (clientesRes.pagination) {
+          setPagination(clientesRes.pagination)
+          setCurrentPage(clientesRes.pagination.page)
+          setPageSize(clientesRes.pagination.page_size)
+        }
+      }
+      
+      if (statsRes.success) {
+        console.log("📈 Estadísticas:", statsRes.data)
+        setStats(statsRes.data)
+      }
+    } catch (e) {
+      console.error("Error cargando datos:", e)
+      setError("Error al cargar los datos")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Función para manejar cambio de página
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+    loadData(page, pageSize)
+  }
+
+  // Función para manejar cambio de tamaño de página
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size)
+    setCurrentPage(1)
+    loadData(1, size)
+  }
+
+  // Función para manejar búsqueda
+  const handleSearch = () => {
+    setCurrentPage(1)
+    loadData(1, pageSize)
+  }
+
+  // Función para limpiar filtros
+  const limpiarFiltros = () => {
+    setSearchTerm("")
+    setFilterEstado("todos")
+    setCurrentPage(1)
+    loadData(1, pageSize)
+  }
+
+  // Cargar detalles del cliente
+  const loadClienteDetails = async (cliente: ClienteDeuda) => {
+    setSelectedCliente(cliente)
+    setDetailsLoading(true)
+    setShowDetails(true)
+    
+    try {
+      const [cuotasRes, historialRes] = await Promise.all([
+        apiRequest(API_ENDPOINTS.DEUDAS_CLIENTE_CUOTAS(cliente.id)),
+        apiRequest(API_ENDPOINTS.DEUDAS_CLIENTE_HISTORIAL(cliente.id))
+      ])
+
+      if (cuotasRes.success) {
+        setCuotasCliente(cuotasRes.data)
+      }
+      
+      if (historialRes.success) {
+        setHistorialCliente(historialRes.data)
+      }
+    } catch (e) {
+      console.error("Error cargando detalles:", e)
+      setError((e as Error).message || "Error cargando detalles del cliente")
+    } finally {
+      setDetailsLoading(false)
+    }
+  }
+
+  // Actualizar estados del sistema
+  const actualizarSistema = async () => {
+    if (!checkAuth()) return
+    
+    setLoading(true)
+    try {
+      const response = await apiRequest(API_ENDPOINTS.DEUDAS_ACTUALIZAR_ESTADOS, {
+        method: 'POST'
+      })
+      
+      if (response.success) {
+        setSuccess("Sistema actualizado exitosamente")
+        await loadData()
+      } else {
+        setError(response.message || "Error actualizando sistema")
+      }
+    } catch (e) {
+      console.error("Error actualizando sistema:", e)
+      setError((e as Error).message || "Error actualizando sistema")
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Filtrar clientes
   useEffect(() => {
     let tmp = clientes.slice()
+    
+
+    
     if (searchTerm) {
       const t = searchTerm.toLowerCase()
       tmp = tmp.filter(
@@ -120,487 +347,753 @@ export default function DeudasPage() {
           c.email.toLowerCase().includes(t)
       )
     }
-    if (fEstado !== "todos") tmp = tmp.filter((c) => c.estado_pago === fEstado)
+    
+    if (filterEstado !== "todos") {
+      tmp = tmp.filter((c) => c.estado_pago === filterEstado)
+    }
+    
+
     setFiltered(tmp)
-  }, [clientes, searchTerm, fEstado])
+  }, [clientes, searchTerm, filterEstado])
 
-  // Cargar datos
-  async function loadAll() {
-    setLoading(true)
-    try {
-      const [clientesRes, statsRes, configRes] = await Promise.all([
-        fetch("/api/deudas"),
-        fetch("/api/deudas?action=estadisticas"),
-        fetch("/api/deudas?action=configuracion")
-      ])
+  // Carga inicial
+  useEffect(() => {
+    loadData()
+  }, [])
 
-      const clientesJson = await clientesRes.json()
-      const statsJson = await statsRes.json()
-      const configJson = await configRes.json()
-
-      if (clientesRes.ok && clientesJson.success) setClientes(clientesJson.data)
-      if (statsRes.ok && statsJson.success) setStats(statsJson.data)
-      if (configRes.ok && configJson.success) setConfig(configJson.data)
-    } catch (error) {
-      console.error("Error cargando datos:", error)
-    }
-    setLoading(false)
-  }
-
-  // Ver detalles del cliente
-  async function verDetalles(cliente: ClienteDeuda) {
-    setSelectedCliente(cliente)
-    setLoading(true)
-    try {
-      const [cuotasRes, historialRes] = await Promise.all([
-        fetch(`/api/deudas?action=cuotas&clienteId=${cliente.id}`),
-        fetch(`/api/deudas?action=historial&clienteId=${cliente.id}`)
-      ])
-
-      const cuotasJson = await cuotasRes.json()
-      const historialJson = await historialRes.json()
-
-      if (cuotasRes.ok && cuotasJson.success) setCuotasCliente(cuotasJson.data)
-      if (historialRes.ok && historialJson.success) setHistorialCliente(historialJson.data)
-    } catch (error) {
-      console.error("Error cargando detalles:", error)
-    }
-    setLoading(false)
-    setShowDetails(true)
-  }
-
-  // Actualizar sistema
-  async function actualizarSistema() {
-    setLoading(true)
-    try {
-      const res = await fetch("/api/deudas?action=actualizar-sistema", {
-        method: "POST"
-      })
-      const json = await res.json()
-      
-      if (res.ok && json.success) {
-        alert("Sistema actualizado exitosamente")
-        await loadAll()
-      } else {
-        alert("Error actualizando sistema: " + json.message)
-      }
-    } catch (error) {
-      console.error("Error actualizando sistema:", error)
-      alert("Error actualizando sistema")
-    }
-    setLoading(false)
-  }
-
-  // Actualizar configuración
-  async function actualizarConfiguracion() {
-    setLoading(true)
-    try {
-      const res = await fetch("/api/deudas?action=configuracion", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config)
-      })
-      const json = await res.json()
-      
-      if (res.ok && json.success) {
-        alert("Configuración actualizada exitosamente")
-        setShowConfig(false)
-      } else {
-        alert("Error actualizando configuración: " + json.message)
-      }
-    } catch (error) {
-      console.error("Error actualizando configuración:", error)
-      alert("Error actualizando configuración")
-    }
-    setLoading(false)
-  }
-
-  // Badge de estado
-  function badgeEstado(estado: string) {
+  // Función para obtener el badge de estado
+  const getEstadoBadge = (estado: string) => {
     switch (estado) {
-      case "al_dia":
-        return <Badge className="bg-green-100 text-green-800">Al Día</Badge>
-      case "proximo_vencimiento":
-        return <Badge className="bg-yellow-100 text-yellow-800">Próximo Vencimiento</Badge>
-      case "vencido":
-        return <Badge className="bg-orange-100 text-orange-800">Vencido</Badge>
-      case "corte_pendiente":
-        return <Badge className="bg-red-100 text-red-800">Corte Pendiente</Badge>
+      case 'al_dia':
+        return <Badge className="bg-green-100 text-green-800 border-green-200">Al Día</Badge>
+      case 'vencido':
+        return <Badge className="bg-red-100 text-red-800 border-red-200">Vencido</Badge>
+      case 'proximo_vencimiento':
+        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Próximo Vencimiento</Badge>
+      case 'sin_fecha':
+        return <Badge className="bg-gray-100 text-gray-800 border-gray-200">Sin Fecha</Badge>
       default:
-        return <Badge className="bg-gray-100 text-gray-800">{estado}</Badge>
+        return <Badge variant="outline">{estado}</Badge>
     }
   }
 
-  // Badge de estado de cuota
-  function badgeCuota(estado: string) {
+  // Función para obtener el badge de cuota
+  const getCuotaBadge = (estado: string) => {
     switch (estado) {
-      case "pagado":
-        return <Badge className="bg-green-100 text-green-800">Pagado</Badge>
-      case "pendiente":
-        return <Badge className="bg-yellow-100 text-yellow-800">Pendiente</Badge>
-      case "vencido":
-        return <Badge className="bg-red-100 text-red-800">Vencido</Badge>
+      case 'pagada':
+        return <Badge className="bg-green-100 text-green-800 border-green-200">Pagada</Badge>
+      case 'vencida':
+        return <Badge className="bg-red-100 text-red-800 border-red-200">Vencida</Badge>
+      case 'pendiente':
+        return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Pendiente</Badge>
       default:
-        return <Badge className="bg-gray-100 text-gray-800">{estado}</Badge>
+        return <Badge variant="outline">{estado}</Badge>
     }
   }
 
-  return (
-    <div className="p-6 bg-slate-50 min-h-screen">
-      {/* Header */}
-      <div className="flex justify-between items-start mb-6">
-        <div className="flex items-start space-x-4">
-          <Button variant="outline" onClick={() => router.push("/dashboard")}>
-            <ArrowLeft className="mr-1" /> Volver
-          </Button>
-          <div className="mt-2">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
-              Gestión de Deudas
-            </h1>
-            <p className="text-slate-600 text-lg">
-              Control y administración de pagos vencidos
-            </p>
+  // Función para obtener el nombre del mes
+  const getMesNombre = (mes: number) => {
+    const meses = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ]
+    return meses[mes - 1] || `Mes ${mes}`
+  }
+
+  // Navegar de vuelta al dashboard
+  const handleGoBack = () => {
+    router.push("/dashboard")
+  }
+
+  if (loading) return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Button variant="outline" onClick={handleGoBack} className="flex items-center space-x-2">
+              <ArrowLeft className="h-4 w-4" />
+              Volver
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Gestión de Deudas</h1>
+              <p className="text-gray-600">Control de pagos vencidos y deudas</p>
+            </div>
           </div>
         </div>
-        <div className="flex gap-2 mt-2">
-          <Button
-            onClick={actualizarSistema}
-            disabled={loading}
-            className="bg-blue-500 text-white flex items-center"
-          >
-            <RefreshCw className={`mr-1 ${loading ? 'animate-spin' : ''}`} />
-            Actualizar Sistema
-          </Button>
-          <Button
-            onClick={() => setShowConfig(true)}
-            variant="outline"
-            className="flex items-center"
-          >
-            <Settings className="mr-1" />
-            Configuración
-          </Button>
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 text-lg">Cargando datos de deudas...</p>
         </div>
       </div>
+    </div>
+  )
 
-      {/* Estadísticas */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <Card className="bg-green-500 text-white">
-          <CardContent className="flex items-center px-6 py-4">
-            <Users className="h-6 w-6 mr-3" />
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Button variant="outline" onClick={handleGoBack} className="flex items-center space-x-2">
+              <ArrowLeft className="h-4 w-4" />
+              Volver
+            </Button>
             <div>
-              <div className="text-2xl font-bold">{stats.clientes_al_dia}</div>
-              <div className="text-sm">Al Día</div>
+              <h1 className="text-3xl font-bold text-gray-900">Gestión de Deudas</h1>
+              <p className="text-gray-600">Control de pagos vencidos y deudas</p>
             </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-orange-500 text-white">
-          <CardContent className="flex items-center px-6 py-4">
-            <AlertTriangle className="h-6 w-6 mr-3" />
-            <div>
-              <div className="text-2xl font-bold">{stats.clientes_vencidos}</div>
-              <div className="text-sm">Vencidos</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-yellow-500 text-white">
-          <CardContent className="flex items-center px-6 py-4">
-            <Clock className="h-6 w-6 mr-3" />
-            <div>
-              <div className="text-2xl font-bold">{stats.clientes_proximo_vencimiento}</div>
-              <div className="text-sm">Próximo Vencimiento</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-red-500 text-white">
-          <CardContent className="flex items-center px-6 py-4">
-            <DollarSign className="h-6 w-6 mr-3" />
-            <div>
-              <div className="text-2xl font-bold">${stats.total_deuda.toLocaleString()}</div>
-              <div className="text-sm">Total Deuda</div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filtros */}
-      <div className="flex flex-col md:flex-row items-center gap-4 bg-white p-4 rounded-lg shadow mb-6">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <Input
-            className="pl-10"
-            placeholder="Buscar por nombre, cédula o email..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+          </div>
+          <div className="flex space-x-2">
+            <Button 
+              variant="outline" 
+              onClick={actualizarSistema} 
+              className="flex items-center space-x-2"
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Actualizar Sistema
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={async () => {
+                try {
+                  await apiRequest(API_ENDPOINTS.DEUDAS_ACTUALIZAR_ESTADOS, { method: 'POST' })
+                  setSuccess('Estados de deudas actualizados correctamente')
+                  loadData(currentPage, pageSize)
+                } catch (e) {
+                  setError('Error al actualizar estados de deudas')
+                }
+              }}
+              className="flex items-center space-x-2"
+              disabled={loading}
+            >
+              <RefreshCw className="h-4 w-4" />
+              Recalcular Deudas
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowConfig(true)} 
+              className="flex items-center space-x-2"
+            >
+              <Settings className="h-4 w-4" />
+              Configuración
+            </Button>
+          </div>
         </div>
-        <div className="w-full md:w-48">
-          <Select value={fEstado} onValueChange={setFEstado}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Todos los estados" />
-            </SelectTrigger>
-            <SelectContent>
-              {[
-                { value: "todos", label: "Todos los Estados" },
-                { value: "al_dia", label: "Al Día" },
-                { value: "proximo_vencimiento", label: "Próximo Vencimiento" },
-                { value: "vencido", label: "Vencido" },
-                { value: "corte_pendiente", label: "Corte Pendiente" }
-              ].map((estado) => (
-                <SelectItem key={estado.value} value={estado.value}>
-                  {estado.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
 
-      {/* Tabla de Clientes */}
-      <Card className="bg-white shadow rounded-lg overflow-hidden">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-red-500" />
-            Clientes con Deudas ({filtered.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Plan</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Meses Pendientes</TableHead>
-                <TableHead>Deuda Total</TableHead>
-                <TableHead>Último Pago</TableHead>
-                <TableHead>Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((cliente) => (
-                <TableRow key={cliente.id}>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{cliente.nombres} {cliente.apellidos}</div>
-                      <div className="text-sm text-gray-500">{cliente.cedula}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{cliente.tipo_plan}</div>
-                      <div className="text-sm text-gray-500">${cliente.precio_plan}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{badgeEstado(cliente.estado_pago)}</TableCell>
-                  <TableCell>
-                    <span className="font-medium text-red-600">
-                      {cliente.meses_pendientes}
-                    </span>
-                  </TableCell>
-                                      <TableCell>
-                      <span className="font-medium text-red-600">
-                        ${Number(cliente.monto_total_deuda || 0).toFixed(2)}
-                      </span>
-                    </TableCell>
-                  <TableCell>
-                    {cliente.fecha_ultimo_pago ? (
-                      <div className="text-sm">
-                        {new Date(cliente.fecha_ultimo_pago).toLocaleDateString()}
-                      </div>
-                    ) : (
-                      <span className="text-sm text-gray-500">Sin pagos</span>
+        {/* Mensajes de error y éxito */}
+        {error && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-800">{error}</p>
+          </div>
+        )}
+        
+        {success && (
+          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-green-800">{success}</p>
+          </div>
+        )}
+
+        {/* Stats Cards */}
+        {stats && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-lg transition-shadow transform hover:scale-105">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-blue-100 text-sm font-medium">Total Clientes</p>
+                    <p className="text-3xl font-bold">{stats.total_clientes}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-blue-400 bg-opacity-30 rounded-full flex items-center justify-center">
+                    <Users className="h-6 w-6" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white hover:shadow-lg transition-shadow transform hover:scale-105">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-green-100 text-sm font-medium">Al Día</p>
+                    <p className="text-3xl font-bold">{stats.clientes_al_dia}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-green-400 bg-opacity-30 rounded-full flex items-center justify-center">
+                    <CheckCircle className="h-6 w-6" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white hover:shadow-lg transition-shadow transform hover:scale-105">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-red-100 text-sm font-medium">Vencidos</p>
+                    <p className="text-3xl font-bold">{stats.clientes_vencidos}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-red-400 bg-opacity-30 rounded-full flex items-center justify-center">
+                    <XCircle className="h-6 w-6" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:shadow-lg transition-shadow transform hover:scale-105">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-purple-100 text-sm font-medium">Total Deuda</p>
+                    <p className="text-3xl font-bold">
+                      ${stats.total_deuda.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 bg-purple-400 bg-opacity-30 rounded-full flex items-center justify-center">
+                    <DollarSign className="h-6 w-6" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <Tabs defaultValue="clientes" className="space-y-6">
+          <TabsList className="grid grid-cols-3">
+            <TabsTrigger value="clientes">Clientes con Deudas</TabsTrigger>
+            <TabsTrigger value="estadisticas">Estadísticas</TabsTrigger>
+            <TabsTrigger value="top-deudores">Top Deudores</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="clientes" className="space-y-4">
+            {/* Search & Filters */}
+            <Card className="border-2 border-blue-100 bg-blue-50/30">
+              <CardContent className="p-6">
+                <div className="flex flex-col md:flex-row gap-4 items-center">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-blue-500" />
+                    <Input
+                      placeholder="🔍 Buscar por nombre, cédula o email..."
+                      className="pl-12 pr-10 h-12 text-lg border-2 border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                      value={searchTerm}
+                      onChange={handleSearchChange}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          setSearching(false)
+                        }
+                      }}
+                    />
+                    {searchTerm && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearSearch}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 hover:bg-red-100 hover:text-red-600"
+                        title="Limpiar búsqueda"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
                     )}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => verDetalles(cliente)}
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      Ver Detalles
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                    {searching && (
+                      <div className="absolute right-10 top-1/2 -translate-y-1/2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <Select value={filterEstado} onValueChange={setFilterEstado}>
+                    <SelectTrigger className="w-48 h-12 border-2 border-blue-200">
+                      <SelectValue placeholder="Filtrar por estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos los estados</SelectItem>
+                      <SelectItem value="al_dia">Al Día</SelectItem>
+                      <SelectItem value="vencido">Vencido</SelectItem>
+                      <SelectItem value="proximo_vencimiento">Próximo Vencimiento</SelectItem>
+                      <SelectItem value="sin_fecha">Sin Fecha</SelectItem>
+                    </SelectContent>
+                  </Select>
 
-      {/* Modal de Detalles */}
-      <Dialog open={showDetails} onOpenChange={setShowDetails}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              Detalles de Deuda - {selectedCliente?.nombres} {selectedCliente?.apellidos}
-            </DialogTitle>
-          </DialogHeader>
-          
-          {selectedCliente && (
-            <Tabs defaultValue="cuotas" className="space-y-4">
-              <TabsList>
-                <TabsTrigger value="cuotas">Cuotas Mensuales</TabsTrigger>
-                <TabsTrigger value="historial">Historial de Pagos</TabsTrigger>
-                <TabsTrigger value="resumen">Resumen</TabsTrigger>
-              </TabsList>
+                  <Button 
+                    onClick={() => loadData(1, pageSize)} 
+                    variant="outline" 
+                    className="flex items-center space-x-2 h-12 px-6 border-2 border-blue-200 hover:bg-blue-50"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Refrescar
+                  </Button>
+                </div>
+                
+                {/* Información de búsqueda */}
+                {searchTerm && (
+                  <div className="mt-4 p-3 bg-blue-100 rounded-lg">
+                    <p className="text-blue-800 text-sm">
+                      <Search className="inline h-4 w-4 mr-2" />
+                      Buscando: <strong>"{searchTerm}"</strong> 
+                      {filtered.length > 0 && (
+                        <span className="ml-2">
+                          - {filtered.length} resultado{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-              <TabsContent value="cuotas">
+            {/* Tabla de Clientes */}
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  Clientes con Deudas ({filtered.length})
+                  {searchTerm && (
+                    <span className="text-sm font-normal text-gray-500 ml-2">
+                      - Resultados para "{searchTerm}"
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Plan</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead>Meses Pendientes</TableHead>
+                      <TableHead>Total Pagado</TableHead>
+                      <TableHead>Deuda Total</TableHead>
+                      <TableHead>Vencimiento</TableHead>
+                      <TableHead>Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-8">
+                          <div className="flex flex-col items-center space-y-2">
+                            <Users className="h-8 w-8 text-gray-400" />
+                            <p className="text-gray-500">No se encontraron clientes con deudas</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filtered.map((cliente) => (
+                        <TableRow key={cliente.id}>
+                          <TableCell>
+                            <div className="flex items-center space-x-3">
+                              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                <User className="h-4 w-4 text-blue-600" />
+                              </div>
+                              <div>
+                                <p className="font-medium">{cliente.nombres} {cliente.apellidos}</p>
+                                <p className="text-sm text-gray-500">{cliente.cedula}</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{cliente.tipo_plan}</p>
+                              <p className="text-sm text-gray-500">${cliente.precio_plan}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {getEstadoBadge(cliente.estado_pago)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-center">
+                              <p className="font-medium">{cliente.meses_pendientes}</p>
+                              <p className="text-xs text-gray-500">meses</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-right">
+                              <p className="font-medium text-green-600">
+                                ${(cliente.total_pagado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              </p>
+
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-right">
+                              <p className="font-medium text-red-600">
+                                ${cliente.monto_total_deuda.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-center">
+                              {cliente.fecha_vencimiento_pago ? (
+                                <p className="text-sm">
+                                  {new Date(cliente.fecha_vencimiento_pago).toLocaleDateString()}
+                                </p>
+                              ) : (
+                                <p className="text-sm text-gray-400">Sin fecha</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => loadClienteDetails(cliente)}
+                              className="flex items-center space-x-2"
+                            >
+                              <Eye className="h-4 w-4" />
+                              Ver Detalles
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+                
+                {/* Paginación */}
+                {pagination.total_pages > 1 && (
+                  <div className="mt-6">
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={pagination.total_pages}
+                      totalCount={pagination.total_count}
+                      pageSize={pageSize}
+                      onPageChange={handlePageChange}
+                      onPageSizeChange={handlePageSizeChange}
+                      showPageSizeSelector={true}
+                    />
+                  </div>
+                )}
+                
+                {/* Botones de Exportación */}
+                <div className="mt-6 flex justify-end">
+                  <ExportButtons
+                    tipo="deudas"
+                    className="ml-auto"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="estadisticas" className="space-y-4">
+            {stats && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Deuda por Estado */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Cuotas Mensuales</CardTitle>
+                    <CardTitle className="flex items-center space-x-2">
+                      <PieChart className="h-5 w-5" />
+                      Deuda por Estado
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {stats.deuda_por_estado.map((item, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div className="flex items-center space-x-3">
+                            {getEstadoBadge(item.estado)}
+                            <span className="text-sm text-gray-600">{item.cantidad} clientes</span>
+                          </div>
+                          <span className="font-medium">
+                            ${item.total_deuda.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Estadísticas Generales */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      <BarChart3 className="h-5 w-5" />
+                      Estadísticas Generales
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                        <span className="text-blue-800">Promedio de Deuda</span>
+                        <span className="font-medium text-blue-800">
+                          ${stats.promedio_deuda.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
+                        <span className="text-yellow-800">Próximo Vencimiento</span>
+                        <span className="font-medium text-yellow-800">{stats.clientes_proximo_vencimiento}</span>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+                        <span className="text-red-800">Cuotas Vencidas</span>
+                        <span className="font-medium text-red-800">{stats.cuotas_vencidas}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="top-deudores" className="space-y-4">
+            {stats && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <TrendingDown className="h-5 w-5" />
+                    Top 5 Clientes con Mayor Deuda
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Cédula</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Monto Deuda</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {stats.top_deudores.map((cliente, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <div className="flex items-center space-x-3">
+                              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                                <span className="text-sm font-medium text-red-600">{index + 1}</span>
+                              </div>
+                              <div>
+                                <p className="font-medium">{cliente.nombres} {cliente.apellidos}</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>{cliente.cedula}</TableCell>
+                          <TableCell>{getEstadoBadge(cliente.estado_pago)}</TableCell>
+                          <TableCell>
+                            <span className="font-medium text-red-600">
+                              ${cliente.monto_deuda.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        {/* Modal de Detalles del Cliente */}
+        <Dialog open={showDetails} onOpenChange={setShowDetails}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                Detalles del Cliente: {selectedCliente?.nombres} {selectedCliente?.apellidos}
+              </DialogTitle>
+            </DialogHeader>
+            
+            {detailsLoading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Cargando detalles...</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Información del Cliente */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Información del Cliente</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center space-x-3">
+                        <User className="h-5 w-5 text-gray-400" />
+                        <div>
+                          <p className="text-sm text-gray-500">Nombre</p>
+                          <p className="font-medium">{selectedCliente?.nombres} {selectedCliente?.apellidos}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <CreditCard className="h-5 w-5 text-gray-400" />
+                        <div>
+                          <p className="text-sm text-gray-500">Cédula</p>
+                          <p className="font-medium">{selectedCliente?.cedula}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <Mail className="h-5 w-5 text-gray-400" />
+                        <div>
+                          <p className="text-sm text-gray-500">Email</p>
+                          <p className="font-medium">{selectedCliente?.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <Phone className="h-5 w-5 text-gray-400" />
+                        <div>
+                          <p className="text-sm text-gray-500">Teléfono</p>
+                          <p className="font-medium">{selectedCliente?.telefono}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <MapPin className="h-5 w-5 text-gray-400" />
+                        <div>
+                          <p className="text-sm text-gray-500">Sector</p>
+                          <p className="font-medium">{selectedCliente?.sector}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <DollarSign className="h-5 w-5 text-gray-400" />
+                        <div>
+                          <p className="text-sm text-gray-500">Plan</p>
+                          <p className="font-medium">{selectedCliente?.tipo_plan} - ${selectedCliente?.precio_plan}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <CheckCircle className="h-5 w-5 text-green-400" />
+                        <div>
+                          <p className="text-sm text-gray-500">Total Pagado</p>
+                          <p className="font-medium text-green-600">${(selectedCliente?.total_pagado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <AlertTriangle className="h-5 w-5 text-red-400" />
+                        <div>
+                          <p className="text-sm text-gray-500">Deuda Actual</p>
+                          <p className="font-medium text-red-600">${selectedCliente?.monto_total_deuda.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Cuotas Mensuales */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Cuotas Mensuales</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Mes/Año</TableHead>
+                          <TableHead>Período</TableHead>
                           <TableHead>Monto</TableHead>
                           <TableHead>Vencimiento</TableHead>
                           <TableHead>Estado</TableHead>
-                          <TableHead>Fecha Pago</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {cuotasCliente.map((cuota) => (
-                          <TableRow key={cuota.id}>
-                            <TableCell>
-                              {cuota.mes}/{cuota.año}
-                            </TableCell>
-                            <TableCell>${cuota.monto}</TableCell>
-                            <TableCell>
-                              {new Date(cuota.fecha_vencimiento).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>{badgeCuota(cuota.estado)}</TableCell>
-                            <TableCell>
-                              {cuota.fecha_pago ? (
-                                new Date(cuota.fecha_pago).toLocaleDateString()
-                              ) : (
-                                <span className="text-gray-500">-</span>
-                              )}
+                        {cuotasCliente.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center py-4">
+                              No hay cuotas registradas
                             </TableCell>
                           </TableRow>
-                        ))}
+                        ) : (
+                          cuotasCliente.map((cuota) => (
+                            <TableRow key={cuota.id}>
+                              <TableCell>
+                                {getMesNombre(cuota.mes)} {cuota.año}
+                              </TableCell>
+                              <TableCell>${cuota.monto}</TableCell>
+                              <TableCell>
+                                {cuota.fecha_vencimiento ? 
+                                  new Date(cuota.fecha_vencimiento).toLocaleDateString() : 
+                                  'Sin fecha'
+                                }
+                              </TableCell>
+                              <TableCell>{getCuotaBadge(cuota.estado)}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
                       </TableBody>
                     </Table>
                   </CardContent>
                 </Card>
-              </TabsContent>
 
-              <TabsContent value="historial">
+                {/* Historial de Pagos */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Historial de Pagos</CardTitle>
+                    <CardTitle className="text-lg">Historial de Pagos</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>Fecha</TableHead>
-                          <TableHead>Monto</TableHead>
                           <TableHead>Concepto</TableHead>
+                          <TableHead>Monto</TableHead>
                           <TableHead>Meses Cubiertos</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {historialCliente.map((pago) => (
-                          <TableRow key={pago.id}>
-                            <TableCell>
-                              {new Date(pago.fecha_pago).toLocaleDateString()}
+                        {historialCliente.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center py-4">
+                              No hay historial de pagos
                             </TableCell>
-                            <TableCell>${pago.monto_pagado}</TableCell>
-                            <TableCell>{pago.concepto}</TableCell>
-                            <TableCell>{pago.meses_cubiertos}</TableCell>
                           </TableRow>
-                        ))}
+                        ) : (
+                          historialCliente.map((pago) => (
+                            <TableRow key={pago.id}>
+                              <TableCell>
+                                {new Date(pago.fecha_pago).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell>{pago.concepto}</TableCell>
+                              <TableCell>${pago.monto_pagado}</TableCell>
+                              <TableCell>{pago.meses_cubiertos}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
                       </TableBody>
                     </Table>
                   </CardContent>
                 </Card>
-              </TabsContent>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
-              <TabsContent value="resumen">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Resumen de Deuda</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <div className="text-sm text-gray-600">Estado Actual</div>
-                        <div className="text-lg font-medium">{badgeEstado(selectedCliente.estado_pago)}</div>
-                      </div>
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <div className="text-sm text-gray-600">Meses Pendientes</div>
-                        <div className="text-lg font-medium text-red-600">{selectedCliente.meses_pendientes}</div>
-                      </div>
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <div className="text-sm text-gray-600">Deuda Total</div>
-                                                 <div className="text-lg font-medium text-red-600">${Number(selectedCliente.monto_total_deuda || 0).toFixed(2)}</div>
-                      </div>
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <div className="text-sm text-gray-600">Plan Mensual</div>
-                        <div className="text-lg font-medium">${selectedCliente.precio_plan}</div>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-4">
-                      <Button 
-                        onClick={() => router.push(`/recaudacion?cliente=${selectedCliente.id}`)}
-                        className="w-full bg-green-500 text-white"
-                      >
-                        Registrar Pago
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal de Configuración */}
-      <Dialog open={showConfig} onOpenChange={setShowConfig}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Configuración del Sistema de Deudas</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div>
-              <Label>Día de Vencimiento</Label>
-              <Input
-                type="number"
-                min="1"
-                max="31"
-                value={config.dia_vencimiento}
-                onChange={(e) => setConfig({...config, dia_vencimiento: Number(e.target.value)})}
-              />
+        {/* Modal de Configuración */}
+        <Dialog open={showConfig} onOpenChange={setShowConfig}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Configuración del Sistema</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="dia_vencimiento">Día de Vencimiento</Label>
+                <Input
+                  id="dia_vencimiento"
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={config.dia_vencimiento}
+                  onChange={(e) => setConfig(prev => ({ ...prev, dia_vencimiento: parseInt(e.target.value) }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="dias_gracia">Días de Gracia</Label>
+                <Input
+                  id="dias_gracia"
+                  type="number"
+                  min="0"
+                  max="30"
+                  value={config.dias_gracia}
+                  onChange={(e) => setConfig(prev => ({ ...prev, dias_gracia: parseInt(e.target.value) }))}
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setShowConfig(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => setShowConfig(false)}>
+                  Guardar
+                </Button>
+              </div>
             </div>
-            
-            <div>
-              <Label>Días de Gracia</Label>
-              <Input
-                type="number"
-                min="0"
-                max="30"
-                value={config.dias_gracia}
-                onChange={(e) => setConfig({...config, dias_gracia: Number(e.target.value)})}
-              />
-            </div>
-            
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowConfig(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={actualizarConfiguracion} disabled={loading}>
-                {loading ? "Guardando..." : "Guardar"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 } 

@@ -1,17 +1,9 @@
-// lib/utils.ts ❌ ya no debe importar nodemailer
+// lib/utils.ts - Utilidades para el frontend
 
-import bcrypt from "bcryptjs"
 import { clsx } from "clsx"
-
 
 export function cn(...inputs: any[]) {
   return clsx(...inputs)
-}
-
-
-export async function hashPassword(password: string): Promise<string> {
-  const salt = await bcrypt.genSalt(12)
-  return bcrypt.hash(password, salt)
 }
 
 /**

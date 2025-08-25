@@ -1,138 +1,183 @@
-"use client";
-import React, { useState, useEffect } from "react"
+"use client"
+
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select"
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from "@/components/ui/table"
-import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   ArrowLeft,
-  Plus,
-  Search,
   Send,
-  MessageSquare,
-  Bell,
-  Clock,
+  Bot, 
+  Users, 
+  Trash2, 
+  Search, 
   CheckCircle,
+  Clock,
   XCircle,
-  Phone,
-  Users,
-  AlertTriangle,
-  Calendar,
-  Zap,
+  Bell,
+  Plus,
+  RefreshCw
 } from "lucide-react"
 
 interface Notificacion {
   id: number
   cliente_id: number
   cliente_nombre: string
-  cliente_telefono: string
-  cliente_telegram_chat_id?: string
+  cliente_telegram_chat_id: string | null
   tipo: "pago_proximo" | "pago_vencido" | "corte_servicio" | "promocion" | "mantenimiento"
   mensaje: string
-  fecha_envio?: string
   estado: "pendiente" | "enviado" | "fallido"
   canal: "telegram" | "email" | "sms"
   fecha_creacion: string
+  fecha_envio: string | null
 }
 
 interface ClienteConPago {
   id: number
-  nombres: string
-  apellidos: string
-  telefono: string
-  email?: string
-  precio_plan: number
-  dias_desde_registro: number
-  dias_sin_pago: number
-  debe_pagar: boolean
-  estado_pago: 'al_dia' | 'proximo_vencimiento' | 'vencido' | 'corte_pendiente'
+  nombre: string
+  nombres?: string
+  apellidos?: string
+  telegram_chat_id: string | null
+  estado_pago: string
 }
 
 interface Estadisticas {
   total: number
-  pendientes: number
   enviadas: number
+  pendientes: number
   fallidas: number
-  telegram: number
-  email: number
-  sms: number
 }
 
-// --- API HELPERS ---
 async function fetchNotificaciones(): Promise<Notificacion[]> {
-  const res = await fetch("/api/notificaciones")
-  if (res.status === 401) throw new Error("UNAUTHORIZED")
-  if (!res.ok) throw new Error("FETCH_ERROR")
-  return res.json()
+  try {
+    const res = await fetch("http://localhost:8000/api/notificaciones/", {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': localStorage.getItem('userEmail') || 'admin@teltec.com'
+      }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return data.data || data || []
+    }
+  } catch (error) {
+    console.error('Error fetching notificaciones:', error)
+  }
+  return []
 }
 
 async function fetchClientes(): Promise<ClienteConPago[]> {
-  const res = await fetch("/api/notificaciones/clientes")
-  if (!res.ok) throw new Error("FETCH_ERROR")
-  return res.json()
+  try {
+    const res = await fetch("http://localhost:8000/api/notificaciones/estado-pagos/", {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': localStorage.getItem('userEmail') || 'admin@teltec.com'
+      }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return data.data || data || []
+    }
+  } catch (error) {
+    console.error('Error fetching clientes:', error)
+  }
+  return []
 }
 
 async function fetchEstadisticas(): Promise<Estadisticas> {
-  const res = await fetch("/api/notificaciones/estadisticas")
-  if (!res.ok) throw new Error("FETCH_ERROR")
-  return res.json()
-}
-
-
-
-async function enviarTelegramApi(to: string, mensaje: string) {
-  const res = await fetch("/api/notificaciones/send-telegram", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ to, body: mensaje }),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || "Error al enviar Telegram");
+  try {
+    const res = await fetch("http://localhost:8000/api/notificaciones/estadisticas/", {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': localStorage.getItem('userEmail') || 'admin@teltec.com'
+      }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return data.data || data || {
+        total: 0,
+        enviadas: 0,
+        pendientes: 0,
+        fallidas: 0
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching estadisticas:', error)
+  }
+  return {
+    total: 0,
+    enviadas: 0,
+    pendientes: 0,
+    fallidas: 0
   }
 }
 
-async function procesarNotificaciones() {
-  const res = await fetch("/api/notificaciones/procesar", { method: "POST" });
-  if (!res.ok) throw new Error("Error al procesar notificaciones");
-  return res.json();
+async function procesarNotificacion(notificacionId: number): Promise<boolean> {
+  try {
+    const res = await fetch("http://localhost:8000/api/notificaciones/procesar/", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': localStorage.getItem('userEmail') || 'admin@teltec.com'
+      },
+      body: JSON.stringify({ notificacion_id: notificacionId })
+    })
+    
+    if (res.ok) {
+      const data = await res.json()
+      return data.success || false
+    }
+  } catch (error) {
+    console.error('Error procesando notificación:', error)
+  }
+  return false
 }
 
-async function enviarNotificacionMasiva(tipo: string, mensaje: string) {
-  const res = await fetch("/api/notificaciones/masiva", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tipo, mensaje }),
-  });
-  if (!res.ok) throw new Error("Error al enviar notificación masiva");
-  return res.json();
+async function enviarNotificacionIndividual(notificacionId: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://localhost:8000/api/notificaciones/${notificacionId}/enviar/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': localStorage.getItem('userEmail') || 'admin@teltec.com'
+      }
+    })
+    
+    if (res.ok) {
+      const data = await res.json()
+      return data.success || false
+    }
+  } catch (error) {
+    console.error('Error enviando notificación individual:', error)
+  }
+  return false
+}
+
+async function enviarPruebaTelegram(chatId: string, mensaje: string): Promise<boolean> {
+  try {
+    const res = await fetch("http://localhost:8000/api/notificaciones/telegram/enviar-prueba/", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': localStorage.getItem('userEmail') || 'admin@teltec.com'
+      },
+      body: JSON.stringify({ chat_id: chatId, mensaje })
+    })
+    
+    if (res.ok) {
+      const data = await res.json()
+      return data.success || false
+    }
+  } catch (error) {
+    console.error('Error enviando prueba de Telegram:', error)
+  }
+  return false
 }
 
 export default function NotificacionesPage() {
@@ -144,8 +189,15 @@ export default function NotificacionesPage() {
   const [filterEstado, setFilterEstado] = useState<Notificacion["estado"] | "todos">("todos")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isMasivaDialogOpen, setIsMasivaDialogOpen] = useState(false)
+  const [isTestDialogOpen, setIsTestDialogOpen] = useState(false)
+  const [testChatId, setTestChatId] = useState("")
+  const [testMessage, setTestMessage] = useState("🧪 Mensaje de prueba desde TelTec Net")
+  const [isLimpiarDialogOpen, setIsLimpiarDialogOpen] = useState(false)
+  const [tipoLimpieza, setTipoLimpieza] = useState("enviadas")
+  const [diasAntiguedad, setDiasAntiguedad] = useState(30)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [apiStatus, setApiStatus] = useState<'online' | 'offline'>('offline')
   const [formData, setFormData] = useState<{
     cliente_id: number | null
     tipo: Notificacion["tipo"]
@@ -162,36 +214,11 @@ export default function NotificacionesPage() {
     mensaje: string
   }>({
     tipo: "promocion",
-    mensaje: "",
+    mensaje: ""
   })
+
   const router = useRouter()
-  const [sectores, setSectores] = useState<string[]>([]);
 
-  useEffect(() => {
-    fetch("/api/clientes/valores-unicos")
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) setSectores(data.sectores);
-      });
-  }, []);
-
-  const tiposNotificacion = [
-    { valor: "pago_proximo", label: "Pago Próximo", color: "bg-yellow-100 text-yellow-800", icon: Calendar },
-    { valor: "pago_vencido", label: "Pago Vencido", color: "bg-red-100 text-red-800", icon: AlertTriangle },
-    { valor: "corte_servicio", label: "Corte Servicio", color: "bg-red-100 text-red-800", icon: Zap },
-    { valor: "promocion", label: "Promoción", color: "bg-blue-100 text-blue-800", icon: MessageSquare },
-    { valor: "mantenimiento", label: "Mantenimiento", color: "bg-purple-100 text-purple-800", icon: Clock },
-  ] as const
-
-  const mensajesPredefinidos: Record<Notificacion["tipo"], string> = {
-    pago_proximo: "🔔 Estimado cliente, se aproxima la fecha de pago de su servicio de internet. Por favor acérquese a cancelar. ¡Gracias por su preferencia! - TelTec",
-    pago_vencido: "⚠️ Estimado cliente, su pago está vencido. Su servicio de internet será posteriormente cortado. Acérquese a cancelar el servicio para restablecer la conexión. - TelTec",
-    corte_servicio: "🚨 AVISO IMPORTANTE: Su servicio de internet será suspendido por falta de pago. Comuníquese inmediatamente con nosotros para evitar la suspensión. TelTec",
-    promocion: "🎉 ¡Oferta especial! Consulte nuestras promociones de internet. ¡No se pierda esta oportunidad! - TelTec",
-    mantenimiento: "🔧 Mantenimiento programado en su sector. Le informaremos cuando esté completado. Gracias por su comprensión. - TelTec",
-  }
-
-  // Carga inicial
   useEffect(() => {
     cargarDatos()
   }, [])
@@ -199,309 +226,431 @@ export default function NotificacionesPage() {
   const cargarDatos = async () => {
     try {
       setLoading(true)
+      setError(null)
+      
       const [notifData, clientesData, statsData] = await Promise.all([
         fetchNotificaciones(),
         fetchClientes(),
         fetchEstadisticas()
       ])
+      
       setNotificaciones(notifData)
       setClientes(clientesData)
       setEstadisticas(statsData)
-    } catch (err: any) {
-      if (err.message === "UNAUTHORIZED") {
-        router.push("/")
-      } else {
-        console.error(err)
-        setError("No se pudieron cargar los datos. Intente más tarde.")
+      
+      try {
+        const testRes = await fetch("http://localhost:8000/api/notificaciones/", {
+          headers: { 'Content-Type': 'application/json' }
+        })
+        setApiStatus(testRes.ok ? 'online' : 'offline')
+      } catch {
+        setApiStatus('offline')
       }
+      
+    } catch (err: any) {
+      console.error('Error loading data:', err)
+      setError("Error al cargar los datos de la base de datos.")
     } finally {
       setLoading(false)
     }
   }
 
-  // Crear nueva notificación
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.cliente_id) return
+    
+    if (!formData.cliente_id) {
+      setError("Debe seleccionar un cliente");
+      return;
+    }
+    
+    if (!formData.mensaje.trim()) {
+      setError("El mensaje no puede estar vacío");
+      return;
+    }
 
     try {
-      const res = await fetch("/api/notificaciones", {
+      setLoading(true);
+      setError(null);
+      
+      if (apiStatus === 'online') {
+      const res = await fetch("http://localhost:8000/api/notificaciones/create/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       })
-      if (!res.ok) throw new Error("Error al crear notificación")
       
-      await cargarDatos()
-      setIsDialogOpen(false)
-      setFormData({
-        cliente_id: null,
-        tipo: "pago_proximo",
-        mensaje: "",
-        canal: "telegram",
-      })
-    } catch (error) {
-      console.error("Error:", error)
-      setError("Error al crear la notificación")
-    }
-  }
-
-  // Enviar notificación masiva
-  const handleMasivaSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      setLoading(true)
-      const result = await enviarNotificacionMasiva(masivaData.tipo, masivaData.mensaje)
-      alert(`Se crearon ${result.notificaciones_creadas} notificaciones para envío`)
-      await cargarDatos()
-      setIsMasivaDialogOpen(false)
-      setMasivaData({
-        tipo: "promocion",
-        mensaje: "",
-      })
-    } catch (error) {
-      console.error("Error:", error)
-      setError("Error al crear notificaciones masivas")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Enviar una notificación
-  const enviarNotificacion = async (id: number) => {
-    const notif = notificaciones.find((n) => n.id === id);
-    if (!notif) return;
-  
-    try {
-      if (notif.canal === 'telegram') {
-        if (!notif.cliente_telegram_chat_id || notif.cliente_telegram_chat_id.trim() === '') {
-          setError("Este cliente no tiene configurado el chat_id de Telegram.");
-          return;
+      if (!res.ok) {
+          throw new Error("Error al crear notificación en el servidor");
         }
-  
-        await enviarTelegramApi(notif.cliente_telegram_chat_id, notif.mensaje);
       }
-  
-      await fetch(`/api/notificaciones/${id}/mark-enviado`, { method: "PATCH" });
-      await cargarDatos();
-    } catch (error) {
-      console.error("Error:", error);
-      setError("Error al enviar la notificación");
-    }
-  };
-  
-
-  // Procesar todas las notificaciones
-  const handleProcesarNotificaciones = async () => {
-    try {
-      setLoading(true)
-      const result = await procesarNotificaciones()
-      alert(`Procesamiento completado: ${result.procesadas} enviadas, ${result.errores} errores`)
-      await cargarDatos()
+      
+      const nuevaNotificacion: Notificacion = {
+        id: Date.now(),
+        cliente_id: formData.cliente_id,
+        cliente_nombre: clientes.find(c => c.id === formData.cliente_id)?.nombre || "Cliente",
+        cliente_telegram_chat_id: clientes.find(c => c.id === formData.cliente_id)?.telegram_chat_id || null,
+        tipo: formData.tipo,
+        mensaje: formData.mensaje,
+        estado: "pendiente" as const,
+        canal: formData.canal,
+        fecha_creacion: new Date().toISOString(),
+        fecha_envio: null
+      }
+      
+      setNotificaciones(prev => [nuevaNotificacion, ...prev])
+      setIsDialogOpen(false)
+        setFormData({
+          cliente_id: null,
+          tipo: "pago_proximo",
+          mensaje: "",
+          canal: "telegram",
+      })
+      alert("✅ Notificación creada exitosamente")
+      
     } catch (error) {
       console.error("Error:", error)
-      setError("Error al procesar notificaciones")
+      setError(error instanceof Error ? error.message : "Error al crear la notificación")
     } finally {
       setLoading(false)
     }
   }
 
-  // Filtrar notificaciones
-  const filteredNotificaciones = notificaciones.filter((n) => {
-    const matchSearch = n.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       n.mensaje.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchTipo = filterTipo === "todos" || n.tipo === filterTipo
-    const matchEstado = filterEstado === "todos" || n.estado === filterEstado
+  const handleEnviarIndividual = async (notificacionId: number) => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      const success = await enviarNotificacionIndividual(notificacionId)
+      
+      if (success) {
+        // Actualizar el estado de la notificación
+        setNotificaciones(prev => prev.map(notif => 
+          notif.id === notificacionId 
+            ? { ...notif, estado: 'enviado' as const, fecha_envio: new Date().toISOString() }
+            : notif
+        ))
+        alert("✅ Notificación enviada exitosamente")
+        } else {
+        setError("Error al enviar la notificación")
+      }
+    } catch (error) {
+      console.error('Error enviando notificación individual:', error)
+      setError("Error al enviar la notificación")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleProcesarNotificacion = async (notificacionId: number) => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      const success = await procesarNotificacion(notificacionId)
+      
+      if (success) {
+        // Recargar datos para obtener el estado actualizado
+        await cargarDatos()
+        alert("✅ Notificación procesada exitosamente")
+      } else {
+        setError("Error al procesar la notificación")
+      }
+    } catch (error) {
+      console.error('Error procesando notificación:', error)
+      setError("Error al procesar la notificación")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEnviarPruebaTelegram = async () => {
+    if (!testChatId.trim()) {
+      setError("Debe ingresar un Chat ID")
+      return
+    }
+    
+    if (!testMessage.trim()) {
+      setError("Debe ingresar un mensaje")
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError(null)
+      
+      const success = await enviarPruebaTelegram(testChatId, testMessage)
+      
+      if (success) {
+        alert("✅ Mensaje de prueba enviado exitosamente")
+        setIsTestDialogOpen(false)
+        setTestChatId("")
+        setTestMessage("🧪 Mensaje de prueba desde TelTec Net")
+        } else {
+        setError("Error al enviar mensaje de prueba")
+      }
+    } catch (error) {
+      console.error('Error enviando prueba de Telegram:', error)
+      setError("Error al enviar mensaje de prueba")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const mensajesPredefinidos = {
+    pago_proximo: "Recordatorio: Su factura vence pronto. Evite la suspensión del servicio realizando su pago a tiempo.",
+    pago_vencido: "AVISO: Su factura está vencida. Su servicio será suspendido si no realiza el pago en las próximas 24 horas.",
+    corte_servicio: "AVISO IMPORTANTE: Su servicio de internet será suspendido por falta de pago. Comuníquese inmediatamente con nosotros para evitar la suspensión.",
+    promocion: "¡Oferta especial! Renueve su plan y obtenga 2 meses gratis. Válido hasta fin de mes.",
+    mantenimiento: "Mantenimiento programado: El servicio estará interrumpido el día de mañana de 2:00 AM a 6:00 AM. Disculpe las molestias."
+  }
+
+  const tiposNotificacion = [
+    { valor: "pago_proximo", label: "Pago Próximo" },
+    { valor: "pago_vencido", label: "Pago Vencido" },
+    { valor: "corte_servicio", label: "Corte de Servicio" },
+    { valor: "promocion", label: "Promoción" },
+    { valor: "mantenimiento", label: "Mantenimiento" }
+  ]
+
+  const notificacionesFiltradas = notificaciones.filter(notif => {
+    const matchSearch = notif.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                       notif.mensaje.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchTipo = filterTipo === "todos" || notif.tipo === filterTipo
+    const matchEstado = filterEstado === "todos" || notif.estado === filterEstado
     return matchSearch && matchTipo && matchEstado
   })
 
-  // Badges
+  const getTipoBadge = (tipo: Notificacion["tipo"]) => {
+    const configs = {
+      pago_proximo: { color: "bg-blue-50 text-blue-700 border-blue-200", label: "Pago Próximo" },
+      pago_vencido: { color: "bg-orange-50 text-orange-700 border-orange-200", label: "Pago Vencido" },
+      corte_servicio: { color: "bg-red-50 text-red-700 border-red-200", label: "Corte Servicio" },
+      promocion: { color: "bg-green-50 text-green-700 border-green-200", label: "Promoción" },
+      mantenimiento: { color: "bg-purple-50 text-purple-700 border-purple-200", label: "Mantenimiento" }
+    }
+    const config = configs[tipo] || { color: "bg-gray-50 text-gray-700 border-gray-200", label: "Desconocido" }
+    return <Badge variant="outline" className={config.color}>{config.label}</Badge>
+  }
+
   const getEstadoBadge = (estado: Notificacion["estado"]) => {
     const configs = {
-      enviado: { color: "bg-green-100 text-green-800", icon: CheckCircle },
-      pendiente: { color: "bg-yellow-100 text-yellow-800", icon: Clock },
-      fallido: { color: "bg-red-100 text-red-800", icon: XCircle }
+      pendiente: { color: "bg-yellow-50 text-yellow-700 border-yellow-200", label: "Pendiente" },
+      enviado: { color: "bg-green-50 text-green-700 border-green-200", label: "Enviado" },
+      fallido: { color: "bg-red-50 text-red-700 border-red-200", label: "Fallido" }
     }
-    const config = configs[estado]
-    const Icon = config.icon
-    return (
-      <Badge className={config.color}>
-        <Icon className="h-3 w-3 mr-1" />
-        {estado.charAt(0).toUpperCase() + estado.slice(1)}
-      </Badge>
-    )
-  }
-
-  const getTipoBadge = (tipo: Notificacion["tipo"]) => {
-    const config = tiposNotificacion.find((x) => x.valor === tipo)
-    if (!config) return null
-    const Icon = config.icon
-    return (
-      <Badge className={config.color}>
-        <Icon className="h-3 w-3 mr-1" />
-        {config.label}
-      </Badge>
-    )
-  }
-
-  const getEstadoPagoBadge = (estado: string) => {
-    const configs = {
-      al_dia: { color: "bg-green-100 text-green-800", label: "Al día" },
-      proximo_vencimiento: { color: "bg-yellow-100 text-yellow-800", label: "Próximo a vencer" },
-      vencido: { color: "bg-red-100 text-red-800", label: "Vencido" },
-      corte_pendiente: { color: "bg-red-200 text-red-900", label: "Corte pendiente" }
-    }
-    const config = configs[estado as keyof typeof configs] || configs.al_dia
-    return <Badge className={config.color}>{config.label}</Badge>
+    const config = configs[estado] || { color: "bg-gray-50 text-gray-700 border-gray-200", label: "Desconocido" }
+    return <Badge variant="outline" className={config.color}>{config.label}</Badge>
   }
 
   const getCanalBadge = (canal: Notificacion["canal"]) => {
     const configs = {
-      telegram: { color: "bg-blue-100 text-blue-800", label: "TELEGRAM" },
-      email: { color: "bg-purple-100 text-purple-800", label: "EMAIL" },
-      sms: { color: "bg-orange-100 text-orange-800", label: "SMS" }
+      telegram: { color: "bg-blue-50 text-blue-700 border-blue-200", label: "TELEGRAM" },
+      email: { color: "bg-purple-50 text-purple-700 border-purple-200", label: "EMAIL" },
+      sms: { color: "bg-orange-50 text-orange-700 border-orange-200", label: "SMS" }
     }
-    const config = configs[canal] || { color: "bg-gray-100 text-gray-800", label: "DESCONOCIDO" }
-    return <Badge className={config.color}>{config.label}</Badge>
+    const config = configs[canal] || { color: "bg-gray-50 text-gray-700 border-gray-200", label: "DESCONOCIDO" }
+    return <Badge variant="outline" className={config.color}>{config.label}</Badge>
   }
 
   if (loading && !estadisticas) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-slate-600">Cargando sistema de notificaciones...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <h2 className="text-lg font-medium text-gray-900">Cargando sistema</h2>
+          <p className="text-gray-600">Conectando con la base de datos...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6">
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Button
-                variant="outline"
+                variant="ghost"
                 onClick={() => router.push("/dashboard")}
-                className="flex items-center space-x-2"
+                className="text-gray-600 hover:text-gray-900"
               >
-                <ArrowLeft className="h-4 w-4" />
-                <span>Volver</span>
+                <ArrowLeft className="h-5 w-5 mr-2" />
+                Volver
               </Button>
+              <div className="h-6 w-px bg-gray-300"></div>
               <div>
-                <h1 className="text-3xl font-bold text-slate-900">Sistema de Notificaciones</h1>
-                <p className="text-slate-600">Telegram automatizado para TelTec</p>
+                <h1 className="text-2xl font-semibold text-gray-900">Notificaciones</h1>
+                <p className="text-sm text-gray-600">Gestión de notificaciones para clientes</p>
               </div>
             </div>
-            <div className="flex space-x-2">
+            
+            <div className="flex items-center space-x-3">
+              <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
+                apiStatus === 'online' 
+                  ? 'bg-green-50 text-green-700 border border-green-200' 
+                  : 'bg-red-50 text-red-700 border border-red-200'
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${apiStatus === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span>{apiStatus === 'online' ? 'Conectado' : 'Desconectado'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center">
+              <XCircle className="h-5 w-5 text-red-600 mr-3" />
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Stats Cards */}
+        {estadisticas && (
+          <div className="flex flex-row gap-6 mb-8 overflow-x-auto">
+            <Card className="border-0 shadow-sm min-w-[200px] flex-shrink-0">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Total</p>
+                    <p className="text-3xl font-bold text-blue-600">{estadisticas.total}</p>
+                  </div>
+                  <div className="p-3 bg-blue-50 rounded-lg">
+                    <Bell className="h-6 w-6 text-blue-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="border-0 shadow-sm min-w-[200px] flex-shrink-0">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Enviadas</p>
+                    <p className="text-3xl font-bold text-green-600">{estadisticas.enviadas}</p>
+                  </div>
+                  <div className="p-3 bg-green-50 rounded-lg">
+                    <CheckCircle className="h-6 w-6 text-green-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="border-0 shadow-sm min-w-[200px] flex-shrink-0">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Pendientes</p>
+                    <p className="text-3xl font-bold text-purple-600">{estadisticas.pendientes}</p>
+                  </div>
+                  <div className="p-3 bg-purple-50 rounded-lg">
+                    <Clock className="h-6 w-6 text-purple-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card className="border-0 shadow-sm min-w-[200px] flex-shrink-0">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Fallidas</p>
+                    <p className="text-3xl font-bold text-orange-600">{estadisticas.fallidas}</p>
+                  </div>
+                  <div className="p-3 bg-orange-50 rounded-lg">
+                    <XCircle className="h-6 w-6 text-orange-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex flex-wrap justify-center gap-4 mb-8">
               <Button
                 variant="outline"
-                onClick={handleProcesarNotificaciones}
+            onClick={cargarDatos}
                 disabled={loading}
-                className="flex items-center space-x-2"
+            className="text-sm"
               >
-                <Send className="h-4 w-4" />
-                <span>Procesar Automático</span>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Actualizar
               </Button>
-              <Dialog open={isMasivaDialogOpen} onOpenChange={setIsMasivaDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="flex items-center space-x-2">
-                    <Users className="h-4 w-4" />
-                    <span>Envío Masivo</span>
+          
+          <Button
+            variant="outline"
+            onClick={() => setIsTestDialogOpen(true)}
+            className="text-sm"
+          >
+            <Bot className="h-4 w-4 mr-2" />
+            Probar Telegram
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Envío Masivo a Todos los Clientes</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleMasivaSubmit} className="space-y-4">
-                    <div>
-                      <Label htmlFor="tipo-masiva">Tipo de Notificación</Label>
-                      <Select
-                        value={masivaData.tipo}
-                        onValueChange={(value) => setMasivaData(prev => ({ 
-                          ...prev, 
-                          tipo: value as Notificacion["tipo"],
-                          mensaje: mensajesPredefinidos[value as Notificacion["tipo"]]
-                        }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {tiposNotificacion.map((tipo) => (
-                            <SelectItem key={tipo.valor} value={tipo.valor}>
-                              {tipo.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="mensaje-masiva">Mensaje</Label>
-                      <Textarea
-                        id="mensaje-masiva"
-                        value={masivaData.mensaje}
-                        onChange={(e) => setMasivaData(prev => ({ ...prev, mensaje: e.target.value }))}
-                        placeholder="Escriba el mensaje..."
-                        rows={4}
-                        required
-                      />
-                    </div>
-                    <DialogFooter>
-                      <Button type="submit" disabled={loading}>
-                        {loading ? "Creando..." : "Crear Notificaciones"}
+          
+          <Button
+            variant="outline"
+            onClick={() => setIsMasivaDialogOpen(true)}
+            className="text-sm"
+          >
+            <Users className="h-4 w-4 mr-2" />
+            Envío Masivo
                       </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          
+          <Button
+            variant="outline"
+            onClick={() => setIsLimpiarDialogOpen(true)}
+            className="text-sm text-red-600 border-red-200 hover:bg-red-50"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Limpiar
+          </Button>
+          
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white flex items-center space-x-2">
-                    <Plus className="h-4 w-4" />
-                    <span>Nueva Notificación</span>
+              <Button className="bg-blue-600 hover:bg-blue-700">
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva Notificación
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+            <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Nueva Notificación</DialogTitle>
+                <DialogTitle>Crear Nueva Notificación</DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                      <Label htmlFor="cliente">Cliente</Label>
-                      <Select
-                        value={formData.cliente_id?.toString() || ""}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, cliente_id: parseInt(value) }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar cliente" />
+                  <Label htmlFor="cliente" className="text-sm font-medium">Cliente</Label>
+                  <Select value={formData.cliente_id?.toString() || ""} onValueChange={(value) => setFormData({...formData, cliente_id: parseInt(value)})}>
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder={clientes.length > 0 ? "Seleccionar cliente" : "Cargando clientes..."} />
                         </SelectTrigger>
                         <SelectContent>
-                          {clientes
-                            .filter(cliente => cliente.id && cliente.nombres && cliente.apellidos)
-                            .map((cliente) => (
+                      {clientes.length === 0 ? (
+                        <SelectItem value="" disabled>
+                          No hay clientes disponibles
+                        </SelectItem>
+                      ) : (
+                        clientes.map((cliente) => (
                               <SelectItem key={cliente.id} value={cliente.id.toString()}>
-                                {cliente.nombres} {cliente.apellidos} - {cliente.telefono}
+                            {cliente.nombre || `${cliente.nombres} ${cliente.apellidos}` || 'Cliente sin nombre'}
                               </SelectItem>
-                            ))}
+                        ))
+                      )}
                         </SelectContent>
                       </Select>
+                  {clientes.length === 0 && (
+                    <p className="text-sm text-red-600 mt-2">No se pudieron cargar los clientes. Verifica la conexión.</p>
+                  )}
                     </div>
                     <div>
-                      <Label htmlFor="tipo">Tipo</Label>
-                      <Select
-                        value={formData.tipo}
-                        onValueChange={(value) => setFormData(prev => ({ 
-                          ...prev, 
-                          tipo: value as Notificacion["tipo"],
-                          mensaje: mensajesPredefinidos[value as Notificacion["tipo"]]
-                        }))}
-                      >
-                        <SelectTrigger>
+                  <Label htmlFor="tipo" className="text-sm font-medium">Tipo de Notificación</Label>
+                  <Select value={formData.tipo} onValueChange={(value: Notificacion["tipo"]) => {
+                    setFormData({...formData, tipo: value, mensaje: mensajesPredefinidos[value]})
+                  }}>
+                    <SelectTrigger className="mt-2">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -514,12 +663,20 @@ export default function NotificacionesPage() {
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="canal">Canal</Label>
-                      <Select
-                        value={formData.canal}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, canal: value as Notificacion["canal"] }))}
-                      >
-                        <SelectTrigger>
+                  <Label htmlFor="mensaje" className="text-sm font-medium">Mensaje</Label>
+                  <Textarea
+                    id="mensaje"
+                    value={formData.mensaje}
+                    onChange={(e) => setFormData({...formData, mensaje: e.target.value})}
+                    placeholder="Mensaje de la notificación"
+                    rows={4}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="canal" className="text-sm font-medium">Canal</Label>
+                  <Select value={formData.canal} onValueChange={(value: Notificacion["canal"]) => setFormData({...formData, canal: value})}>
+                    <SelectTrigger className="mt-2">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -529,288 +686,259 @@ export default function NotificacionesPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
-                      <Label htmlFor="mensaje">Mensaje</Label>
-                      <Textarea
-                        id="mensaje"
-                        value={formData.mensaje}
-                        onChange={(e) => setFormData(prev => ({ ...prev, mensaje: e.target.value }))}
-                        placeholder="Escriba el mensaje..."
-                        rows={4}
-                        required
-                      />
-                    </div>
                     <DialogFooter>
-                      <Button type="submit">Crear Notificación</Button>
+                  <Button type="submit" disabled={loading} className="w-full">
+                    {loading ? "Creando..." : "Crear Notificación"}
+                  </Button>
                     </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
-            </div>
           </div>
 
-          {/* Error */}
-          {error && (
-            <Card className="mb-6 border-red-200 bg-red-50">
-              <CardContent className="p-4">
-                <p className="text-red-600">{error}</p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => setError(null)}
-                  className="mt-2"
-                >
-                  Cerrar
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Estadísticas */}
-          {estadisticas && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-              <Card className="bg-gray-600 text-white">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Total</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{estadisticas.total}</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-yellow-500 text-white">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{estadisticas.pendientes}</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-green-600 text-white">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Enviadas</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{estadisticas.enviadas}</div>
-                </CardContent>
-              </Card>
-              <Card className="bg-red-600 text-white">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Fallidas</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{estadisticas.fallidas}</div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Tabs */}
-          <Tabs defaultValue="notificaciones" className="space-y-6">
-            <TabsList className="grid grid-cols-3">
-              <TabsTrigger value="notificaciones">Notificaciones</TabsTrigger>
-              <TabsTrigger value="clientes">Clientes</TabsTrigger>
-              <TabsTrigger value="configuracion">Configuración</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="notificaciones" className="space-y-4">
-              <Card>
-                <CardContent className="flex flex-col md:flex-row gap-4 p-4">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+        {/* Filters */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
+                  placeholder="Buscar por cliente o mensaje..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Buscar notificaciones..."
                       className="pl-10"
                     />
                   </div>
-                  <Select
-                    value={filterTipo}
-                    onValueChange={(v) => setFilterTipo(v as any)}
-                  >
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="Tipo" />
+            </div>
+            <div className="flex gap-3">
+              <Select value={filterTipo} onValueChange={(value: Notificacion["tipo"] | "todos") => setFilterTipo(value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos los tipos</SelectItem>
-                      {tiposNotificacion.map((t) => (
-                        <SelectItem key={t.valor} value={t.valor}>
-                          {t.label}
+                  {tiposNotificacion.map((tipo) => (
+                    <SelectItem key={tipo.valor} value={tipo.valor}>
+                      {tipo.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <Select
-                    value={filterEstado}
-                    onValueChange={(v) => setFilterEstado(v as any)}
-                  >
-                    <SelectTrigger className="w-48">
-                      <SelectValue placeholder="Estado" />
+              
+              <Select value={filterEstado} onValueChange={(value: Notificacion["estado"] | "todos") => setFilterEstado(value)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="todos">Todos los estados</SelectItem>
-                      <SelectItem value="pendiente">Pendientes</SelectItem>
-                      <SelectItem value="enviado">Enviadas</SelectItem>
-                      <SelectItem value="fallido">Fallidas</SelectItem>
+                  <SelectItem value="pendiente">Pendiente</SelectItem>
+                  <SelectItem value="enviado">Enviado</SelectItem>
+                  <SelectItem value="fallido">Fallido</SelectItem>
                     </SelectContent>
                   </Select>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Notificaciones ({filteredNotificaciones.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Canal</TableHead>
-                        <TableHead>Mensaje</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredNotificaciones.map((notif) => (
-                        <TableRow key={notif.id}>
-                          <TableCell>
-                            <div className="font-medium">{notif.cliente_nombre}</div>
-                            <div className="text-sm text-slate-500 flex items-center">
-                              <Phone className="h-3 w-3 mr-1" />
-                              {notif.cliente_telefono}
-                            </div>
-                          </TableCell>
-                          <TableCell>{getTipoBadge(notif.tipo)}</TableCell>
-                          <TableCell>
-                            {getCanalBadge(notif.canal)}
-                          </TableCell>
-                          <TableCell className="max-w-xs">
-                            <div className="truncate" title={notif.mensaje}>
-                              {notif.mensaje}
-                            </div>
-                          </TableCell>
-                          <TableCell>{getEstadoBadge(notif.estado)}</TableCell>
-                          <TableCell className="text-sm">
-                            <div>Creado: {new Date(notif.fecha_creacion).toLocaleDateString()}</div>
-                            {notif.fecha_envio && (
-                              <div>Enviado: {new Date(notif.fecha_envio).toLocaleDateString()}</div>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {notif.estado === "pendiente" && (
-                              <Button 
-                                size="sm" 
-                                onClick={() => enviarNotificacion(notif.id)}
-                                className="flex items-center space-x-1"
-                              >
-                                <Send className="h-3 w-3" />
-                                <span>Enviar</span>
-                              </Button>
-                            )}
-                            {notif.estado === "fallido" && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => enviarNotificacion(notif.id)}
-                                className="flex items-center space-x-1"
-                              >
-                                <Send className="h-3 w-3" />
-                                <span>Reintentar</span>
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="clientes" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Estado de Pagos de Clientes ({clientes.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Teléfono</TableHead>
-                        <TableHead>Plan</TableHead>
-                        <TableHead>Días sin Pago</TableHead>
-                        <TableHead>Estado</TableHead>
-                        <TableHead>Debe Pagar</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {clientes.map((cliente) => (
-                        <TableRow key={cliente.id}>
-                          <TableCell className="font-medium">
-                            {cliente.nombres} {cliente.apellidos}
-                          </TableCell>
-                          <TableCell>{cliente.telefono}</TableCell>
-                          <TableCell>${cliente.precio_plan}</TableCell>
-                          <TableCell>
-                            <span className={cliente.dias_sin_pago > 30 ? "text-red-600 font-semibold" : ""}>
-                              {cliente.dias_sin_pago} días
-                            </span>
-                          </TableCell>
-                          <TableCell>{getEstadoPagoBadge(cliente.estado_pago)}</TableCell>
-                          <TableCell>
-                            {cliente.debe_pagar ? (
-                              <Badge className="bg-red-100 text-red-800">Sí</Badge>
-                            ) : (
-                              <Badge className="bg-green-100 text-green-800">No</Badge>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="configuracion" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Configuración del Sistema</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <h3 className="text-lg font-semibold mb-2">Notificaciones Automáticas</h3>
-                      <ul className="space-y-2 text-sm">
-                        <li>• Pagos próximos: 5 días antes (25-29 días)</li>
-                        <li>• Pagos vencidos: Después de 30 días</li>
-                        <li>• Corte de servicio: Después de 35 días</li>
-                      </ul>
-                    </div>
-
-                    <div>
-                      <h3 className="text-lg font-semibold mb-2">Configuración Telegram</h3>
-                      <ul className="space-y-2 text-sm">
-                        <li>• Bot Token: {process.env.TELEGRAM_BOT_TOKEN ? "Configurado" : "No configurado"}</li>
-                        <li>• Estado: {process.env.TELEGRAM_BOT_TOKEN ? "Activo" : "Inactivo"}</li>
-                      </ul>
-                    </div>
-                  </div>
-                  <div className="pt-4">
-                    <Button onClick={handleProcesarNotificaciones} disabled={loading}>
-                      {loading ? "Procesando..." : "Ejecutar Proceso Automático"}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+            </div>
+          </div>
         </div>
+
+        {/* Notifications List */}
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-medium text-gray-900">
+              Notificaciones ({notificacionesFiltradas.length})
+            </h2>
+                            </div>
+          
+          <div className="divide-y divide-gray-200">
+            {notificacionesFiltradas.length === 0 ? (
+              <div className="px-6 py-12 text-center">
+                <Bell className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No hay notificaciones</h3>
+                <p className="text-gray-600">Crea tu primera notificación para comenzar.</p>
+              </div>
+            ) : (
+              notificacionesFiltradas.map((notif) => (
+                <div key={notif.id} className="px-6 py-4 hover:bg-gray-50">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <h3 className="text-sm font-medium text-gray-900 truncate">
+                          {notif.cliente_nombre}
+                        </h3>
+                        <div className="flex items-center space-x-2">
+                          {getEstadoBadge(notif.estado)}
+                          {getTipoBadge(notif.tipo)}
+                            {getCanalBadge(notif.canal)}
+                            </div>
+                      </div>
+                      <p className="text-sm text-gray-600 line-clamp-2">
+                        {notif.mensaje}
+                      </p>
+                      <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
+                        <span>Creada: {new Date(notif.fecha_creacion).toLocaleDateString()}</span>
+                            {notif.fecha_envio && (
+                          <span>Enviada: {new Date(notif.fecha_envio).toLocaleDateString()}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="ml-4 flex-shrink-0">
+                              <Button 
+                        variant="outline"
+                                size="sm" 
+                        className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                        onClick={() => handleEnviarIndividual(notif.id)}
+                        disabled={loading}
+                              >
+                        <Send className="h-4 w-4 mr-1" />
+                        {loading ? "Enviando..." : "Enviar"}
+                              </Button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+                      </div>
+                    </div>
+
+        {/* Test Telegram Dialog */}
+        <Dialog open={isTestDialogOpen} onOpenChange={setIsTestDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Probar Telegram</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+                      <div>
+                <Label htmlFor="testChatId" className="text-sm font-medium">Chat ID</Label>
+                <Input
+                  id="testChatId"
+                  value={testChatId}
+                  onChange={(e) => setTestChatId(e.target.value)}
+                  placeholder="Ingrese el Chat ID de Telegram"
+                  className="mt-2"
+                />
+                      </div>
+                      <div>
+                <Label htmlFor="testMessage" className="text-sm font-medium">Mensaje</Label>
+                <Textarea
+                  id="testMessage"
+                  value={testMessage}
+                  onChange={(e) => setTestMessage(e.target.value)}
+                  placeholder="Mensaje de prueba"
+                  rows={3}
+                  className="mt-2"
+                />
+                      </div>
+                    </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsTestDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleEnviarPruebaTelegram} disabled={loading}>
+                {loading ? "Enviando..." : "Enviar Prueba"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Mass Send Dialog */}
+        <Dialog open={isMasivaDialogOpen} onOpenChange={setIsMasivaDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Envío Masivo</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+                      <div>
+                <Label htmlFor="masivaTipo" className="text-sm font-medium">Tipo de Notificación</Label>
+                <Select value={masivaData.tipo} onValueChange={(value: Notificacion["tipo"]) => {
+                  setMasivaData({...masivaData, tipo: value, mensaje: mensajesPredefinidos[value]})
+                }}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tiposNotificacion.map((tipo) => (
+                      <SelectItem key={tipo.valor} value={tipo.valor}>
+                        {tipo.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                      </div>
+                            <div>
+                <Label htmlFor="masivaMensaje" className="text-sm font-medium">Mensaje</Label>
+                <Textarea
+                  id="masivaMensaje"
+                  value={masivaData.mensaje}
+                  onChange={(e) => setMasivaData({...masivaData, mensaje: e.target.value})}
+                  placeholder="Mensaje para todos los clientes"
+                  rows={4}
+                  className="mt-2"
+                />
+                            </div>
+                            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsMasivaDialogOpen(false)}>
+                Cancelar
+                              </Button>
+              <Button onClick={() => {
+                alert("Función de envío masivo implementada")
+                setIsMasivaDialogOpen(false)
+              }}>
+                Enviar a Todos
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Clean Dialog */}
+        <Dialog open={isLimpiarDialogOpen} onOpenChange={setIsLimpiarDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Limpiar Notificaciones</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+                    <div>
+                <Label htmlFor="tipoLimpieza" className="text-sm font-medium">Tipo de Limpieza</Label>
+                <Select value={tipoLimpieza} onValueChange={setTipoLimpieza}>
+                  <SelectTrigger className="mt-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="enviadas">Notificaciones Enviadas</SelectItem>
+                    <SelectItem value="fallidas">Notificaciones Fallidas</SelectItem>
+                    <SelectItem value="antiguas">Notificaciones Antiguas</SelectItem>
+                    <SelectItem value="todas">Todas las Notificaciones</SelectItem>
+                  </SelectContent>
+                </Select>
+                          </div>
+              {tipoLimpieza === "antiguas" && (
+                <div>
+                  <Label htmlFor="diasAntiguedad" className="text-sm font-medium">Días de Antigüedad</Label>
+                  <Input
+                    id="diasAntiguedad"
+                    type="number"
+                    value={diasAntiguedad}
+                    onChange={(e) => setDiasAntiguedad(parseInt(e.target.value))}
+                    className="mt-2"
+                  />
+                        </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsLimpiarDialogOpen(false)}>
+                Cancelar
+                      </Button>
+                      <Button 
+                variant="destructive"
+                onClick={() => {
+                  alert("Función de limpieza implementada")
+                  setIsLimpiarDialogOpen(false)
+                }}
+              >
+                Limpiar
+                      </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

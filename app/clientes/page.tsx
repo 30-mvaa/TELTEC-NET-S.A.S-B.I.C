@@ -1,7 +1,6 @@
-// app/clientes/page.tsx
 "use client"
 
-import React, { useState, useEffect, ChangeEvent } from "react"
+import React, { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import {
   Card,
@@ -35,17 +34,22 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Plus, Edit, Trash2 } from "lucide-react"
+import { ArrowLeft, Plus, Edit, Trash2, RefreshCw, Search, User, Mail, Phone, MapPin, X } from "lucide-react"
 import { validarCedulaEcuatoriana, formatearCedula, validarMayorEdad, calcularEdad, obtenerFechaMinima, obtenerFechaMaxima, formatearFecha } from "@/lib/utils"
 import { Switch } from '@/components/ui/switch'
-
-// Definir planes con precio
-const planes = [
-  { label: "Plan Básico 15MB", precio: 10 },
-  { label: "Plan Familiar 30MB", precio: 20 },
-  
-]
+import { apiRequest, API_ENDPOINTS } from "@/lib/config/api"
+import { isAuthenticated } from "@/lib/config/api"
 
 interface Cliente {
   id: number
@@ -61,8 +65,13 @@ interface Cliente {
   telefono: string
   telegram_chat_id?: string
   estado: "activo" | "inactivo" | "suspendido"
-  fecha_creacion: string
+  fecha_registro: string
   fecha_actualizacion: string
+  fecha_ultimo_pago?: string | null
+  meses_pendientes?: number
+  monto_total_deuda?: number
+  fecha_vencimiento_pago?: string | null
+  estado_pago?: string
 }
 
 interface FormData {
@@ -83,22 +92,38 @@ interface FormData {
 export default function ClientesPage() {
   const router = useRouter()
 
+  // Estados principales
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [loading, setLoading] = useState(true)
+  const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  
+  // Estados de búsqueda y filtros
   const [searchTerm, setSearchTerm] = useState("")
   const [filterEstado, setFilterEstado] = useState<Cliente["estado"] | "todos">("todos")
+  
+  // Estados del modal
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Cliente | null>(null)
-  const [sectores, setSectores] = useState<string[]>([]);
-  const [planes, setPlanes] = useState<{ tipo_plan: string, precio_plan: number }[]>([]);
-  const [cedulaError, setCedulaError] = useState<string | null>(null);
-  const [cedulaValida, setCedulaValida] = useState<boolean>(false);
-  const [fechaError, setFechaError] = useState<string | null>(null);
-  const [edadCalculada, setEdadCalculada] = useState<number | null>(null);
-  // Estado para el toggle de contrato
-  const [generarContrato, setGenerarContrato] = useState(true)
-
+  
+  // Estados de datos
+  const [sectores, setSectores] = useState<string[]>([])
+  const [planes, setPlanes] = useState<{ tipo_plan: string, precio_plan: number }[]>([])
+  
+  // Estados de validación
+  const [cedulaError, setCedulaError] = useState<string | null>(null)
+  const [cedulaValida, setCedulaValida] = useState(false)
+  const [fechaError, setFechaError] = useState<string | null>(null)
+  const [edadCalculada, setEdadCalculada] = useState<number | null>(null)
+  
+  // Estados de confirmación
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean, cliente: Cliente | null }>({
+    open: false,
+    cliente: null
+  })
+  
+  // Estado del formulario
   const [formData, setFormData] = useState<FormData>({
     cedula: "",
     nombres: "",
@@ -114,107 +139,129 @@ export default function ClientesPage() {
     estado: "activo",
   })
 
-  useEffect(() => {
-    const raw = localStorage.getItem("user")
-    if (!raw) {
+  // Verificar autenticación
+  const checkAuth = () => {
+    if (!isAuthenticated()) {
       router.push("/")
-      return
+      return false
     }
-    loadData()
-    fetch("/api/clientes/valores-unicos")
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setSectores(data.sectores);
-          setPlanes(data.planes);
-        }
-      });
-  }, [router])
+    return true
+  }
 
+  // Cargar datos de clientes
   async function loadData() {
-    setLoading(true)
+    if (!checkAuth()) return
+    
+    // Si hay término de búsqueda, mostrar estado de búsqueda
+    if (searchTerm) {
+      setSearching(true)
+    } else {
+      setLoading(true)
+    }
+    
     setError(null)
     try {
       const params = new URLSearchParams()
       if (searchTerm) params.set("search", searchTerm)
       if (filterEstado !== "todos") params.set("estado", filterEstado)
-      const res = await fetch(`/api/clientes?${params.toString()}`)
-      const json = await res.json()
-      if (res.ok && json.success && Array.isArray(json.data)) {
+      
+      const url = `${API_ENDPOINTS.CLIENTES}?${params.toString()}`
+      const json = await apiRequest(url)
+      
+      if (json.success && Array.isArray(json.data)) {
         setClientes(json.data)
       } else {
         throw new Error(json.message || "Error cargando clientes")
       }
     } catch (e) {
-      setError((e as Error).message)
+      console.error("Error en loadData:", e)
+      setError((e as Error).message || "Error cargando clientes")
     } finally {
       setLoading(false)
+      setSearching(false)
+    }
+  }
+
+  // Cargar valores únicos (sectores y planes)
+  async function loadValoresUnicos() {
+    if (!checkAuth()) return
+    
+    try {
+      const data = await apiRequest(API_ENDPOINTS.CLIENTES_VALORES_UNICOS)
+      
+      if (data.success) {
+        setSectores(data.sectores || [])
+        setPlanes(data.planes || [])
+      }
+    } catch (err) {
+      console.error('Error cargando valores únicos:', err)
     }
   }
 
   // Validar cédula en tiempo real
   const validarCedulaEnTiempoReal = (cedula: string) => {
     if (cedula.length === 0) {
-      setCedulaError(null);
-      setCedulaValida(false);
-      return;
+      setCedulaError(null)
+      setCedulaValida(false)
+      return
     }
 
     if (cedula.length < 10) {
-      setCedulaError("La cédula debe tener 10 dígitos");
-      setCedulaValida(false);
-      return;
+      setCedulaError("La cédula debe tener 10 dígitos")
+      setCedulaValida(false)
+      return
     }
 
     if (!/^\d+$/.test(cedula)) {
-      setCedulaError("La cédula solo debe contener números");
-      setCedulaValida(false);
-      return;
+      setCedulaError("La cédula solo debe contener números")
+      setCedulaValida(false)
+      return
     }
 
     if (cedula.length === 10) {
       if (validarCedulaEcuatoriana(cedula)) {
-        setCedulaError(null);
-        setCedulaValida(true);
+        setCedulaError(null)
+        setCedulaValida(true)
       } else {
-        setCedulaError("Cédula ecuatoriana inválida");
-        setCedulaValida(false);
+        setCedulaError("Cédula ecuatoriana inválida")
+        setCedulaValida(false)
       }
     } else {
-      setCedulaError("La cédula debe tener exactamente 10 dígitos");
-      setCedulaValida(false);
+      setCedulaError("La cédula debe tener exactamente 10 dígitos")
+      setCedulaValida(false)
     }
-  };
+  }
 
   // Validar fecha de nacimiento en tiempo real
   const validarFechaNacimientoEnTiempoReal = (fecha: string) => {
     if (!fecha) {
-      setFechaError(null);
-      setEdadCalculada(null);
-      return;
+      setFechaError(null)
+      setEdadCalculada(null)
+      return
     }
 
-    const fechaSeleccionada = new Date(fecha);
-    const fechaMinima = new Date(obtenerFechaMinima());
-    const fechaMaxima = new Date(obtenerFechaMaxima());
+    const fechaSeleccionada = new Date(fecha)
+    const fechaMinima = new Date(obtenerFechaMinima())
+    const fechaMaxima = new Date(obtenerFechaMaxima())
 
     if (fechaSeleccionada > fechaMinima) {
-      setFechaError("El usuario debe ser mayor de 18 años");
-      setEdadCalculada(null);
-      return;
+      setFechaError("El usuario debe ser mayor de 18 años")
+      setEdadCalculada(null)
+      return
     }
 
     if (fechaSeleccionada < fechaMaxima) {
-      setFechaError("La fecha de nacimiento no puede ser anterior a 100 años");
-      setEdadCalculada(null);
-      return;
+      setFechaError("Fecha de nacimiento inválida")
+      setEdadCalculada(null)
+      return
     }
 
-    const edad = calcularEdad(fecha);
-    setFechaError(null);
-    setEdadCalculada(edad);
-  };
+    const edad = calcularEdad(fecha)
+    setEdadCalculada(edad)
+    setFechaError(null)
+  }
 
+  // Abrir modal para nuevo cliente
   const openNew = () => {
     setEditing(null)
     setFormData({
@@ -231,119 +278,84 @@ export default function ClientesPage() {
       telegram_chat_id: "",
       estado: "activo",
     })
+    setCedulaError(null)
+    setCedulaValida(false)
+    setFechaError(null)
+    setEdadCalculada(null)
     setIsDialogOpen(true)
   }
 
+  // Manejar cambio de plan
+  const handlePlanChange = (tipoPlan: string) => {
+    const planSeleccionado = planes.find(p => p.tipo_plan === tipoPlan)
+    setFormData(prev => ({
+      ...prev,
+      tipo_plan: tipoPlan,
+      precio_plan: planSeleccionado?.precio_plan || 0
+    }))
+  }
+
+  // Manejar envío del formulario
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    // Validar cédula antes de enviar
-    if (!validarCedulaEcuatoriana(formData.cedula)) {
-      alert("Cédula ecuatoriana inválida. Por favor, verifique el número ingresado.")
+    if (!checkAuth()) return
+
+    // Validaciones
+    if (!cedulaValida) {
+      setError("Por favor, ingrese una cédula válida")
       return
     }
 
-    // Validar edad mínima
-    if (!validarMayorEdad(formData.fecha_nacimiento)) {
-      alert("El usuario debe ser mayor de 18 años.")
+    if (fechaError) {
+      setError("Por favor, ingrese una fecha de nacimiento válida")
       return
     }
 
-    // Validar email
-    if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      alert("Email inválido.")
+    if (!formData.nombres.trim() || !formData.apellidos.trim()) {
+      setError("Los nombres y apellidos son obligatorios")
       return
     }
 
-    // Validar duplicados solo al crear nuevo cliente
-    if (!editing) {
-      if (clientes.some(c => c.cedula === formData.cedula)) {
-        alert("Ya existe un cliente con esta cédula")
-        return
-      }
-      if (clientes.some(c => c.email === formData.email)) {
-        alert("Ya existe un cliente con este email")
-        return
-      }
+    if (!formData.tipo_plan) {
+      setError("Debe seleccionar un plan")
+      return
+    }
+
+    if (!formData.sector) {
+      setError("Debe seleccionar un sector")
+      return
     }
 
     try {
-      const method = editing ? "PUT" : "POST"
-      const url = editing ? `/api/clientes/${editing.id}` : "/api/clientes"
-      const body = editing ? { ...formData, id: editing.id } : formData
-
-      const res = await fetch(url, {
+      const url = editing 
+        ? `${API_ENDPOINTS.CLIENTES}${editing.id}/` 
+        : API_ENDPOINTS.CLIENTES
+      
+      const method = editing ? 'PUT' : 'POST'
+      
+      const response = await apiRequest(url, {
         method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(formData)
       })
 
-      const json = await res.json()
-      if (res.ok && json.success) {
+      if (response.success) {
         setIsDialogOpen(false)
-        setFormData({
-          cedula: "",
-          nombres: "",
-          apellidos: "",
-          tipo_plan: "",
-          precio_plan: 0,
-          fecha_nacimiento: "",
-          direccion: "",
-          sector: "",
-          email: "",
-          telefono: "",
-          telegram_chat_id: "",
-          estado: "activo",
-        })
-        setCedulaError(null)
-        setCedulaValida(false)
-        setFechaError(null)
-        setEdadCalculada(null)
+        setSuccess(editing ? "Cliente actualizado exitosamente" : "Cliente creado exitosamente")
+        setError(null)
         loadData()
-        if (generarContrato && !editing) {
-          console.log('🔄 Generando contrato PDF...')
-          console.log('📋 Datos del cliente:', json.data)
-          
-          // Lógica para generar y descargar el contrato PDF
-          const contratoRes = await fetch(`/api/clientes/contrato`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(json.data),
-          })
-          
-          console.log('📊 Respuesta del servidor:', contratoRes.status, contratoRes.statusText)
-          
-          if (contratoRes.ok) {
-            console.log('✅ Contrato generado exitosamente')
-            const blob = await contratoRes.blob()
-            console.log('📄 Blob creado:', blob.size, 'bytes')
-            
-            const url = window.URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `Contrato_${json.data.nombres}_${json.data.apellidos}.pdf`
-            document.body.appendChild(a)
-            a.click()
-            a.remove()
-            window.URL.revokeObjectURL(url)
-            console.log('📥 Descarga iniciada')
-          } else {
-            console.error('❌ Error generando contrato:', contratoRes.status, contratoRes.statusText)
-            const errorText = await contratoRes.text()
-            console.error('📄 Error details:', errorText)
-            alert('Cliente guardado, pero no se pudo generar el contrato PDF')
-          }
-        } else {
-          console.log('ℹ️ No se generará contrato:', { generarContrato, editing })
-        }
+        
+        // Limpiar mensaje de éxito después de 3 segundos
+        setTimeout(() => setSuccess(null), 3000)
       } else {
-        alert(json.message || "Error al guardar cliente")
+        setError(response.message || "Error al guardar cliente")
       }
     } catch (e) {
-      alert("Error de conexión")
+      console.error("Error en handleSubmit:", e)
+      setError((e as Error).message || "Error al guardar cliente")
     }
   }
 
+  // Abrir modal de edición
   const handleEdit = (c: Cliente) => {
     setEditing(c)
     setFormData({
@@ -352,7 +364,7 @@ export default function ClientesPage() {
       apellidos: c.apellidos,
       tipo_plan: c.tipo_plan,
       precio_plan: c.precio_plan,
-      fecha_nacimiento: c.fecha_nacimiento.split("T")[0],
+      fecha_nacimiento: c.fecha_nacimiento,
       direccion: c.direccion,
       sector: c.sector,
       email: c.email,
@@ -360,27 +372,91 @@ export default function ClientesPage() {
       telegram_chat_id: c.telegram_chat_id || "",
       estado: c.estado,
     })
+    setCedulaError(null)
+    setCedulaValida(true)
+    setFechaError(null)
+    setEdadCalculada(calcularEdad(c.fecha_nacimiento))
     setIsDialogOpen(true)
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("¿Eliminar cliente?")) return
+  // Abrir diálogo de confirmación de eliminación
+  const handleDeleteClick = (cliente: Cliente) => {
+    setDeleteDialog({ open: true, cliente })
+  }
+
+  // Confirmar eliminación
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialog.cliente) return
+    
     try {
-      const res = await fetch("/api/clientes", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+      const response = await apiRequest(`${API_ENDPOINTS.CLIENTES}${deleteDialog.cliente.id}/`, {
+        method: 'DELETE'
       })
-      const json = await res.json()
-      if (res.ok && json.success) loadData()
-      else alert(json.message)
-    } catch {
-      alert("Error al eliminar")
+
+      if (response.success) {
+        setSuccess("Cliente eliminado exitosamente")
+        setError(null)
+        loadData()
+        
+        // Limpiar mensaje de éxito después de 3 segundos
+        setTimeout(() => setSuccess(null), 3000)
+      } else {
+        setError(response.message || "Error al eliminar cliente")
+      }
+    } catch (e) {
+      console.error("Error en handleDelete:", e)
+      setError((e as Error).message || "Error al eliminar cliente")
+    } finally {
+      setDeleteDialog({ open: false, cliente: null })
     }
   }
 
+  // Calcular estadísticas
+  const getStats = () => {
+    const total = clientes.length
+    const activos = clientes.filter(c => c.estado === 'activo').length
+    const suspendidos = clientes.filter(c => c.estado === 'suspendido').length
+    const inactivos = clientes.filter(c => c.estado === 'inactivo').length
+
+    return {
+      total,
+      activos,
+      suspendidos,
+      inactivos,
+      porcentajeActivos: total > 0 ? Math.round((activos / total) * 100) : 0,
+      porcentajeSuspendidos: total > 0 ? Math.round((suspendidos / total) * 100) : 0,
+      porcentajeInactivos: total > 0 ? Math.round((inactivos / total) * 100) : 0
+    }
+  }
+
+  // Refrescar datos
+  const handleRefresh = () => {
+    setSearchTerm("")
+    setFilterEstado("todos")
+    loadData()
+    loadValoresUnicos()
+  }
+
+  // Cargar datos al montar el componente
+  useEffect(() => {
+    if (checkAuth()) {
+      loadData()
+      loadValoresUnicos()
+    }
+  }, [])
+
+  // Búsqueda con debounce
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (checkAuth()) {
+        loadData()
+      }
+    }, 300) // Esperar 300ms después de que el usuario deje de escribir
+
+    return () => clearTimeout(timeoutId)
+  }, [searchTerm, filterEstado])
+
   if (loading) return <div className="p-6 text-center">Cargando clientes...</div>
-  if (error) return <div className="p-6 text-red-600">Error: {error}</div>
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
@@ -394,392 +470,498 @@ export default function ClientesPage() {
               className="flex items-center space-x-2"
             >
               <ArrowLeft className="h-4 w-4" />
-              <span>Volver</span>
+              Volver
             </Button>
             <div>
-              <h1 className="text-3xl font-bold text-slate-900">Gestión de Clientes</h1>
-              <p className="text-slate-600">Administra los clientes de TelTec</p>
+              <h1 className="text-3xl font-bold text-gray-900">Gestión de Clientes</h1>
+              <p className="text-gray-600">Administra los clientes del sistema</p>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <Button
-              onClick={openNew}
-              className="bg-blue-600 hover:bg-blue-700 text-white flex items-center space-x-2"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Nuevo Cliente</span>
-            </Button>
+          <Button onClick={openNew} className="flex items-center space-x-2">
+            <Plus className="h-4 w-4" />
+            Nuevo Cliente
+          </Button>
+        </div>
+
+        {/* Mensajes de error y éxito */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-800">{error}</p>
           </div>
-        </div>
-
-        {/* Stats */}
-        <div className="flex space-x-4 overflow-x-auto mb-6">
-          {[
-            "Total Clientes",
-            "Activos",
-            "Suspendidos",
-            "Inactivos",
-          ].map((title, i) => (
-            <Card key={i} className="flex-1 min-w-[12rem]">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium">{title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {i === 0
-                    ? clientes.length
-                    : i === 1
-                    ? clientes.filter(c => c.estado === "activo").length
-                    : i === 2
-                    ? clientes.filter(c => c.estado === "suspendido").length
-                    : clientes.filter(c => c.estado === "inactivo").length}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Buscador */}
-        <div className="flex items-center mb-8 max-w-md space-x-2">
-          <div className="relative flex-1">
-            <Input
-              placeholder="Buscar..."
-              value={searchTerm}
-              onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                setSearchTerm(e.target.value)
-              }
-              onKeyDown={e => e.key === "Enter" && loadData()}
-              className="w-full pr-10"
-            />
+        )}
+        
+        {success && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-green-800">{success}</p>
           </div>
-          <Button onClick={loadData}>Buscar</Button>
-        </div>
+        )}
 
-        {/* Tabla */}
-        <div className="overflow-x-auto bg-white rounded-xl shadow-lg">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Plan</TableHead>
-                <TableHead>Precio</TableHead>
-                <TableHead>Contacto</TableHead>
-                <TableHead>Telegram</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {clientes.map(c => (
-                <TableRow key={c.id}>
-                  <TableCell>
-                    {c.nombres} {c.apellidos}
-                  </TableCell>
-                  <TableCell>{c.tipo_plan}</TableCell>
-                  <TableCell>${c.precio_plan}</TableCell>
-                  <TableCell>
-                    <div className="text-sm">
-                      <div>{c.email}</div>
-                      <div className="text-gray-500 text-xs">
-                        {formatearFecha(c.fecha_nacimiento)} ({calcularEdad(c.fecha_nacimiento)} años)
+        {/* Estadísticas */}
+        <div className="flex justify-center mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full max-w-6xl">
+            {(() => {
+              const stats = getStats()
+              return (
+                <>
+                  <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-lg transition-shadow transform hover:scale-105">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-blue-100 text-sm font-medium">Total Clientes</p>
+                          <p className="text-3xl font-bold">{stats.total}</p>
+                          <p className="text-blue-200 text-xs mt-1">
+                            {stats.total > 0 ? 'Todos los registros' : 'Sin clientes'}
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-blue-400 bg-opacity-30 rounded-full flex items-center justify-center">
+                          <User className="h-6 w-6" />
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-sm">
-                      {c.telegram_chat_id ? (
-                        <div className="flex items-center space-x-1">
-                          <span className="text-green-600">✓</span>
-                          <span className="text-xs text-gray-600">Configurado</span>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white hover:shadow-lg transition-shadow transform hover:scale-105">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-green-100 text-sm font-medium">Activos</p>
+                          <p className="text-3xl font-bold">{stats.activos}</p>
+                          <p className="text-green-200 text-xs mt-1">
+                            {stats.porcentajeActivos}% del total
+                          </p>
                         </div>
-                      ) : (
-                        <div className="flex items-center space-x-1">
-                          <span className="text-gray-400">-</span>
-                          <span className="text-xs text-gray-500">No configurado</span>
+                        <div className="w-12 h-12 bg-green-400 bg-opacity-30 rounded-full flex items-center justify-center">
+                          <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
                         </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={
-                        c.estado === "activo"
-                          ? "bg-green-100 text-green-800"
-                          : c.estado === "suspendido"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : "bg-red-100 text-red-800"
-                      }
-                    >
-                      {c.estado.charAt(0).toUpperCase() + c.estado.slice(1)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="flex space-x-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEdit(c)}
-                    >
-                      <Edit />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDelete(c.id)}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white hover:shadow-lg transition-shadow transform hover:scale-105">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-yellow-100 text-sm font-medium">Suspendidos</p>
+                          <p className="text-3xl font-bold">{stats.suspendidos}</p>
+                          <p className="text-yellow-200 text-xs mt-1">
+                            {stats.porcentajeSuspendidos}% del total
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-yellow-400 bg-opacity-30 rounded-full flex items-center justify-center">
+                          <div className="w-3 h-3 bg-white rounded-full"></div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white hover:shadow-lg transition-shadow transform hover:scale-105">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-red-100 text-sm font-medium">Inactivos</p>
+                          <p className="text-3xl font-bold">{stats.inactivos}</p>
+                          <p className="text-red-200 text-xs mt-1">
+                            {stats.porcentajeInactivos}% del total
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-red-400 bg-opacity-30 rounded-full flex items-center justify-center">
+                          <div className="w-3 h-3 bg-white rounded-full"></div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )
+            })()}
+          </div>
         </div>
 
-        {/* Modal de Nuevo/Editar */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild style={{ display: "none" }} />
-          <DialogContent className="max-w-md w-full max-h-[85vh] overflow-auto">
-            <DialogHeader>
-              <DialogTitle>
-                {editing ? "Editar Cliente" : "Nuevo Cliente"}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="cedula">Cédula</Label>
-                <Input
-                  id="cedula"
-                  value={formData.cedula}
-                  onChange={e => {
-                    const value = e.target.value;
-                    if (/^\d*$/.test(value) && value.length <= 10) {
-                      setFormData({ ...formData, cedula: value });
-                      validarCedulaEnTiempoReal(value);
-                    }
-                  }}
-                  maxLength={10}
-                  required
-                  disabled={!!editing}
-                  className={`${cedulaError ? 'border-red-500 focus:border-red-500' : cedulaValida ? 'border-green-500 focus:border-green-500' : ''}`}
-                />
-                {cedulaError && (
-                  <div className="text-red-600 text-sm mt-1 flex items-center">
-                    <span className="mr-1">⚠️</span>
-                    {cedulaError}
-                  </div>
-                )}
-                {cedulaValida && (
-                  <div className="text-green-600 text-sm mt-1 flex items-center">
-                    <span className="mr-1">✅</span>
-                    Cédula válida: {formatearCedula(formData.cedula)}
-                  </div>
-                )}
+        {/* Filtros y búsqueda */}
+        <Card className="mb-6">
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <Label htmlFor="search">Buscar</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="search"
+                    placeholder="Buscar por nombre, cédula, email..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        loadData()
+                      }
+                    }}
+                    className={`pl-10 ${searching ? 'pr-10' : ''}`}
+                    disabled={searching}
+                  />
+                  {searching && (
+                    <div className="absolute right-3 top-3">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    </div>
+                  )}
+                  {searchTerm && !searching && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchTerm("")}
+                      className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
-              <div>
-                <Label htmlFor="nombres">Nombres</Label>
-                <Input
-                  id="nombres"
-                  value={formData.nombres}
-                  onChange={e => {
-                    const value = e.target.value;
-                    if (/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$/.test(value)) {
-                      setFormData({ ...formData, nombres: value });
-                    }
-                  }}
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="apellidos">Apellidos</Label>
-                <Input
-                  id="apellidos"
-                  value={formData.apellidos}
-                  onChange={e => {
-                    const value = e.target.value;
-                    if (/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$/.test(value)) {
-                      setFormData({ ...formData, apellidos: value });
-                    }
-                  }}
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="tipo_plan">Plan</Label>
-                <Select
-                  value={formData.tipo_plan}
-                  onValueChange={v => {
-                    const plan = planes.find(p => p.tipo_plan === v)
-                    setFormData({
-                      ...formData,
-                      tipo_plan: v,
-                      precio_plan: plan?.precio_plan || 0,
-                    })
-                  }}
-                >
+              <div className="w-full md:w-48">
+                <Label htmlFor="estado">Estado</Label>
+                <Select value={filterEstado} onValueChange={(value: any) => setFilterEstado(value)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccione plan" />
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {planes
-                      .filter(plan => plan.tipo_plan && plan.tipo_plan.trim() !== "")
-                      .map(plan => (
-                        <SelectItem key={plan.tipo_plan} value={plan.tipo_plan}>
-                          {`${plan.tipo_plan} – $${plan.precio_plan}`}
-                        </SelectItem>
-                      ))}
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="activo">Activo</SelectItem>
+                    <SelectItem value="inactivo">Inactivo</SelectItem>
+                    <SelectItem value="suspendido">Suspendido</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              <div className="flex items-end">
+                <Button onClick={handleRefresh} variant="outline" className="flex items-center space-x-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Refrescar
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tabla de clientes */}
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Clientes ({clientes.length})
+              {searchTerm && (
+                <span className="text-sm font-normal text-gray-500 ml-2">
+                  - Resultados para "{searchTerm}"
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Cédula</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Contacto</TableHead>
+                    <TableHead>Sector</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clientes.map((cliente) => (
+                    <TableRow key={cliente.id}>
+                      <TableCell>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                            <User className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{cliente.nombres} {cliente.apellidos}</p>
+                            <p className="text-sm text-gray-500">
+                              Registrado: {formatearFecha(cliente.fecha_registro)}
+                            </p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <code className="bg-gray-100 px-2 py-1 rounded text-sm">
+                          {formatearCedula(cliente.cedula)}
+                        </code>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{cliente.tipo_plan}</p>
+                          <p className="text-sm text-gray-500">${cliente.precio_plan}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <Mail className="h-3 w-3 text-gray-400" />
+                            <span className="text-sm">{cliente.email}</span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Phone className="h-3 w-3 text-gray-400" />
+                            <span className="text-sm">{cliente.telefono}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <MapPin className="h-3 w-3 text-gray-400" />
+                          <span className="text-sm">{cliente.sector}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge 
+                          variant={
+                            cliente.estado === 'activo' ? 'default' : 
+                            cliente.estado === 'inactivo' ? 'secondary' : 'destructive'
+                          }
+                        >
+                          {cliente.estado}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEdit(cliente)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeleteClick(cliente)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Modal de formulario */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editing ? "Editar Cliente" : "Nuevo Cliente"}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Cédula */}
               <div>
-                <Label htmlFor="fecha_nacimiento">Fecha de Nacimiento</Label>
+                <Label htmlFor="cedula">Cédula *</Label>
+                <Input
+                  id="cedula"
+                  value={formData.cedula}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '')
+                    setFormData(prev => ({ ...prev, cedula: value }))
+                    validarCedulaEnTiempoReal(value)
+                  }}
+                  placeholder="1234567890"
+                  maxLength={10}
+                />
+                {cedulaError && (
+                  <p className="text-sm text-red-600 mt-1">{cedulaError}</p>
+                )}
+                {cedulaValida && (
+                  <p className="text-sm text-green-600 mt-1">✓ Cédula válida</p>
+                )}
+              </div>
+
+              {/* Nombres */}
+              <div>
+                <Label htmlFor="nombres">Nombres *</Label>
+                <Input
+                  id="nombres"
+                  value={formData.nombres}
+                  onChange={(e) => setFormData(prev => ({ ...prev, nombres: e.target.value }))}
+                  placeholder="Juan Carlos"
+                />
+              </div>
+
+              {/* Apellidos */}
+              <div>
+                <Label htmlFor="apellidos">Apellidos *</Label>
+                <Input
+                  id="apellidos"
+                  value={formData.apellidos}
+                  onChange={(e) => setFormData(prev => ({ ...prev, apellidos: e.target.value }))}
+                  placeholder="Pérez González"
+                />
+              </div>
+
+              {/* Fecha de nacimiento */}
+              <div>
+                <Label htmlFor="fecha_nacimiento">Fecha de Nacimiento *</Label>
                 <Input
                   id="fecha_nacimiento"
                   type="date"
                   value={formData.fecha_nacimiento}
-                  onChange={e => {
-                    const value = e.target.value;
-                    setFormData({ ...formData, fecha_nacimiento: value });
-                    validarFechaNacimientoEnTiempoReal(value);
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, fecha_nacimiento: e.target.value }))
+                    validarFechaNacimientoEnTiempoReal(e.target.value)
                   }}
-                  min={obtenerFechaMaxima()}
                   max={obtenerFechaMinima()}
-                  required
-                  className={`${fechaError ? 'border-red-500 focus:border-red-500' : ''}`}
+                  min={obtenerFechaMaxima()}
                 />
                 {fechaError && (
-                  <div className="text-red-600 text-sm mt-1 flex items-center">
-                    <span className="mr-1">⚠️</span>
-                    {fechaError}
-                  </div>
+                  <p className="text-sm text-red-600 mt-1">{fechaError}</p>
                 )}
-                {edadCalculada !== null && (
-                  <div className="text-green-600 text-sm mt-1 flex items-center">
-                    <span className="mr-1">✅</span>
-                    Edad: {edadCalculada} años
-                  </div>
+                {edadCalculada && (
+                  <p className="text-sm text-green-600 mt-1">✓ Edad: {edadCalculada} años</p>
                 )}
-                
-                
               </div>
+
+              {/* Plan */}
               <div>
-                <Label htmlFor="direccion">Dirección</Label>
-                <Input
-                  id="direccion"
-                  value={formData.direccion}
-                  onChange={e =>
-                    setFormData({ ...formData, direccion: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="sector">Sector</Label>
-                <Select
-                  value={formData.sector}
-                  onValueChange={v => setFormData({ ...formData, sector: v })}
-                >
+                <Label htmlFor="tipo_plan">Plan *</Label>
+                <Select value={formData.tipo_plan} onValueChange={handlePlanChange}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccione sector" />
+                    <SelectValue placeholder="Seleccione un plan" />
                   </SelectTrigger>
                   <SelectContent>
-                    {sectores
-                      .filter(sector => sector && sector.trim() !== "")
-                      .map(sector => (
-                        <SelectItem key={sector} value={sector}>{sector}</SelectItem>
-                      ))}
+                    {planes.map((plan) => (
+                      <SelectItem key={plan.tipo_plan} value={plan.tipo_plan}>
+                        {plan.tipo_plan} - ${plan.precio_plan}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-            <div>
-                <Label htmlFor="email">Email</Label>
+
+              {/* Precio del plan */}
+              <div>
+                <Label htmlFor="precio_plan">Precio del Plan</Label>
+                <Input
+                  id="precio_plan"
+                  type="number"
+                  value={formData.precio_plan}
+                  onChange={(e) => setFormData(prev => ({ ...prev, precio_plan: Number(e.target.value) }))}
+                  placeholder="0.00"
+                  step="0.01"
+                  readOnly
+                />
+              </div>
+
+              {/* Sector */}
+              <div>
+                <Label htmlFor="sector">Sector *</Label>
+                <Select value={formData.sector} onValueChange={(value) => setFormData(prev => ({ ...prev, sector: value }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccione un sector" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sectores.map((sector) => (
+                      <SelectItem key={sector} value={sector}>
+                        {sector}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Email */}
+              <div>
+                <Label htmlFor="email">Email *</Label>
                 <Input
                   id="email"
                   type="email"
                   value={formData.email}
-                  onChange={e =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                  required
-                  disabled={!!editing}
+                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="cliente@email.com"
                 />
               </div>
 
+              {/* Teléfono */}
               <div>
-                <Label htmlFor="telefono">Teléfono</Label>
+                <Label htmlFor="telefono">Teléfono *</Label>
                 <Input
                   id="telefono"
                   value={formData.telefono}
-                  onChange={e => {
-                    const value = e.target.value;
-                    if (/^\d*$/.test(value)) {
-                      setFormData({ ...formData, telefono: value });
-                    }
-                  }}
-                  maxLength={10} // Opcional: para limitar a 10 dígitos
-                  required
+                  onChange={(e) => setFormData(prev => ({ ...prev, telefono: e.target.value.replace(/\D/g, '') }))}
+                  placeholder="0987654321"
+                  maxLength={10}
                 />
               </div>
 
+              {/* Dirección */}
+              <div className="md:col-span-2">
+                <Label htmlFor="direccion">Dirección</Label>
+                <Input
+                  id="direccion"
+                  value={formData.direccion}
+                  onChange={(e) => setFormData(prev => ({ ...prev, direccion: e.target.value }))}
+                  placeholder="Av. Principal 123"
+                />
+              </div>
+
+              {/* Telegram Chat ID */}
               <div>
-                <Label htmlFor="telegram_chat_id">
-                  Chat ID de Telegram 
-                  <span className="text-gray-500 text-xs ml-1">(Opcional)</span>
-                </Label>
+                <Label htmlFor="telegram_chat_id">ID de Chat Telegram</Label>
                 <Input
                   id="telegram_chat_id"
                   value={formData.telegram_chat_id}
-                  onChange={e => {
-                    const value = e.target.value;
-                    // Permitir solo números y caracteres válidos para chat_id
-                    if (/^[0-9-]*$/.test(value)) {
-                      setFormData({ ...formData, telegram_chat_id: value });
-                    }
-                  }}
-                  placeholder="Ej: 123456789 o -1001234567890"
-                  className="text-sm"
+                  onChange={(e) => setFormData(prev => ({ ...prev, telegram_chat_id: e.target.value }))}
+                  placeholder="123456789"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Para recibir notificaciones por Telegram. Dejar vacío si no desea notificaciones.
-                </p>
               </div>
 
+              {/* Estado */}
               <div>
                 <Label htmlFor="estado">Estado</Label>
-                <Select
-                  value={formData.estado}
-                  onValueChange={v =>
-                    setFormData({ ...formData, estado: v as Cliente["estado"] })
-                  }
-                >
+                <Select value={formData.estado} onValueChange={(value: any) => setFormData(prev => ({ ...prev, estado: value }))}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="activo">Activo</SelectItem>
-                    <SelectItem value="suspendido">Suspendido</SelectItem>
                     <SelectItem value="inactivo">Inactivo</SelectItem>
+                    <SelectItem value="suspendido">Suspendido</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-2">
-                <Switch id="generar-contrato" checked={generarContrato} onCheckedChange={setGenerarContrato} />
-                <Label htmlFor="generar-contrato">Generar contrato automáticamente</Label>
-              </div>
-              <DialogFooter className="flex justify-end space-x-2 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit">{editing ? "Actualizar" : "Guardar"}</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit">
+                {editing ? "Actualizar" : "Crear"} Cliente
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de confirmación de eliminación */}
+      <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ open, cliente: null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Está seguro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminará permanentemente el cliente{" "}
+              <strong>{deleteDialog.cliente?.nombres} {deleteDialog.cliente?.apellidos}</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-600 hover:bg-red-700">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -1,12 +1,12 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const params = useSearchParams()
   const token = params.get("token")
   const router = useRouter()
@@ -33,7 +33,7 @@ export default function ResetPasswordPage() {
     setIsSubmitting(true)
 
     try {
-      const res = await fetch("/api/auth/reset-password", {
+      const res = await fetch("http://localhost:8000/api/auth/reset/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),
@@ -96,5 +96,19 @@ export default function ResetPasswordPage() {
         </form>
       </div>
     </div>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">
+        <div className="w-full max-w-md p-6 space-y-6 bg-slate-800 rounded-xl">
+          <h1 className="text-2xl font-bold text-center">Cargando...</h1>
+        </div>
+      </div>
+    }>
+      <ResetPasswordForm />
+    </Suspense>
   )
 }

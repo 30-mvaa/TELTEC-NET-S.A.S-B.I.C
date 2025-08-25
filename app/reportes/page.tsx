@@ -2,114 +2,104 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { 
+  ArrowLeft, 
+  Calendar, 
+  DollarSign, 
+  Users, 
+  Filter, 
+  Download, 
+  RefreshCw, 
+  BarChart3,
+  Mail,
+  FileText,
+  TrendingUp,
+  TrendingDown
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Label,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts"
-import {
-  ArrowLeft,
-  TrendingUp,
-  TrendingDown,
-  Users,
-  DollarSign,
-  Download,
-  RefreshCw,
-  Calendar,
-  Filter,
-  BarChart3,
-  PieChart as PieChartIcon,
-  FileText,
-  Settings,
-  Mail,
-} from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
-import { ClienteModel } from '@/lib/models/Cliente'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Pagination } from "@/components/ui/pagination"
+import { FinancialChart } from "../components/FinancialChart"
 
-interface ReporteData {
-  reporteFinanciero: {
-    ingresos: number;
-    gastos: number;
-    utilidad: number;
-    crecimiento: number;
-  };
-  reporteClientes: {
-    total: number;
-    activos: number;
-    nuevos: number;
-    bajas: number;
-  };
-  period?: {
-    month: number;
-    year: number;
-    type?: string;
-  };
-}
-
-interface ClienteData {
+// Interfaces
+interface ClienteAnualData {
   id: number;
   cedula: string;
   nombres: string;
   apellidos: string;
+  nombre_completo: string;
   tipo_plan: string;
   precio_plan: number;
   sector: string;
   estado: string;
   fecha_registro: string;
-  // Añadido para reporte anual:
-  pagos_por_mes?: Record<number, { total: number; cantidad: number } | null>;
-  total_pagos_anio?: number;
-  // Añadido para reporte mensual:
-  monto_pagado_mes?: number;
-  cantidad_pagos_mes?: number;
-  fechas_pago_mes?: string[];
+  meses_estado: Record<number, {
+    pagado: boolean;
+    cantidad_pagos: number;
+    total_pagado: number;
+    color: string;
+  }>;
+  total_anual: number;
+  pagos_anual: number;
+  meses_pagados: number;
+  meses_sin_pagar: number;
+  porcentaje_cumplimiento: number;
 }
 
-interface ClienteDetalladoData {
-  id: number;
-  cedula: string;
-  nombres: string;
-  apellidos: string;
-  tipo_plan: string;
-  precio_plan: number;
-  sector: string;
-  estado: string;
-  fecha_registro: string;
-  pagos_por_mes: Record<number, { total: number; cantidad: number }>;
-  total_pagado_anio: number;
-  total_pagos_anio: number;
-}
-
-interface ReporteDetalladoData {
-  clientes: ClienteDetalladoData[];
+interface ReporteAnualData {
   anio: number;
+  clientes: ClienteAnualData[];
   total_clientes: number;
   resumen: {
     total_recaudado_anio: number;
     total_pagos_anio: number;
-    clientes_con_pagos: number;
-    clientes_sin_pagos: number;
+    promedio_cumplimiento: number;
   };
 }
 
-// --- Tipos para pagos y gastos ---
+interface UtilidadesAnualesData {
+  anio: number;
+  recaudacion_anual: number;
+  gastos_anuales: number;
+  utilidad_anual: number;
+  total_pagos: number;
+  total_gastos: number;
+  porcentaje_utilidad: number;
+}
+
+interface RecaudacionMensualData {
+  mes: number;
+  nombre_mes: string;
+  nombre_mes_corto: string;
+  total_recaudado: number;
+  total_pagos: number;
+  es_mayor_recaudacion: boolean;
+  es_menor_recaudacion: boolean;
+}
+
+interface ReporteGraficoAnualData {
+  anio: number;
+  datos_mensuales: RecaudacionMensualData[];
+  estadisticas: {
+    total_anual: number;
+    total_pagos_anual: number;
+    promedio_mensual: number;
+    meses_mayor_recaudacion: RecaudacionMensualData[];
+    meses_menor_recaudacion: RecaudacionMensualData[];
+  };
+  variacion_mensual: Array<{
+    mes: number;
+    nombre_mes: string;
+    variacion_porcentual: number;
+  }>;
+  fecha_generacion: string;
+}
+
 interface PagoData {
   id: number;
   numero_comprobante: string;
@@ -130,510 +120,312 @@ interface GastoData {
   descripcion: string;
   categoria: string;
   monto: number;
-  proveedor?: string;
-  metodo_pago?: string;
-  usuario_nombre?: string;
+  proveedor: string;
+  metodo_pago: string;
+  usuario_nombre: string;
 }
 
 export default function ReportesPage() {
-  // ----- lóg. año-base para salto en diciembre -----
+  const router = useRouter()
   const now = new Date()
-  const currentYear = now.getFullYear()
-  const baseYear = now.getMonth() === 11 ? currentYear + 1 : currentYear
+  const baseYear = now.getFullYear()
 
-  // Estados para filtros
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
+  // Estados principales
+  const [activeTab, setActiveTab] = useState("anual")
   const [selectedYear, setSelectedYear] = useState(baseYear)
-  const [reportType, setReportType] = useState("general")
-  const [activeTab, setActiveTab] = useState("dashboard")
-  
-  // Estados para datos y carga
-  const [reporteData, setReporteData] = useState<ReporteData>({
-    reporteFinanciero: { ingresos: 0, gastos: 0, utilidad: 0, crecimiento: 0 },
-    reporteClientes: { activos: 0, total: 0, nuevos: 0, bajas: 0 }
-  })
-  const [clientesData, setClientesData] = useState<ClienteData[]>([])
-  const [reporteDetalladoData, setReporteDetalladoData] = useState<ReporteDetalladoData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
-  // Estados para pagos y gastos
+
+  // Estados para reporte anual
+  const [reporteAnualData, setReporteAnualData] = useState<ReporteAnualData | null>(null)
+  const [anualSearch, setAnualSearch] = useState("")
+  const [anualSector, setAnualSector] = useState("todos")
+  const [sectores, setSectores] = useState<string[]>([])
+
+  // Estados para reporte gráfico anual
+  const [reporteGraficoData, setReporteGraficoData] = useState<ReporteGraficoAnualData | null>(null)
+  const [utilidadesAnuales, setUtilidadesAnuales] = useState<UtilidadesAnualesData | null>(null)
+  const [anioUtilidades, setAnioUtilidades] = useState(baseYear)
+  const [chartType, setChartType] = useState<'bar' | 'line'>('bar')
+
+  // Estados para pagos
   const [pagosData, setPagosData] = useState<PagoData[]>([])
-  const [gastosData, setGastosData] = useState<GastoData[]>([])
   const [pagosSearch, setPagosSearch] = useState("")
   const [pagosMetodo, setPagosMetodo] = useState("todos")
   const [pagosEstado, setPagosEstado] = useState("todos")
   const [pagosPage, setPagosPage] = useState(1)
-  const [gastosSearch, setGastosSearch] = useState("")
-  const [gastosCategoria, setGastosCategoria] = useState("todas")
-  const [gastosPage, setGastosPage] = useState(1)
-  const [categoriasGasto, setCategoriasGasto] = useState<string[]>([])
-
-  // 1. Estado para selección múltiple de pagos
+  const [pagosPageSize, setPagosPageSize] = useState(10)
   const [selectedPagos, setSelectedPagos] = useState<number[]>([])
   const [isSendingComprobantes, setIsSendingComprobantes] = useState(false)
+  const [pagosMes, setPagosMes] = useState(now.getMonth() + 1)
 
-  // --- Corrección y unificación de lógica de filtros y fetch ---
-  // Estados para el tipo de reporte de clientes
-  const [clientesReportType, setClientesReportType] = useState('general')
+  // Estados para gastos
+  const [gastosData, setGastosData] = useState<GastoData[]>([])
+  const [gastosSearch, setGastosSearch] = useState("")
+  const [gastosCategoria, setGastosCategoria] = useState("todos")
+  const [gastosPage, setGastosPage] = useState(1)
+  const [gastosPageSize, setGastosPageSize] = useState(10)
+  const [gastosMes, setGastosMes] = useState(now.getMonth() + 1)
 
-  // Actualizar automáticamente el reporte de clientes al cambiar año o tipo
-  useEffect(() => {
-    if (activeTab === 'clientes') {
-      fetchClientesReport(clientesReportType)
-    }
-  }, [selectedYear, clientesReportType, activeTab])
-
-  // Botones de reporte de clientes
-  const handleClientesReport = (type: string) => {
-    setClientesReportType(type)
-  }
-
-  // --- Dashboard y financiero: actualizan con filtros globales ---
-  useEffect(() => {
-    if (activeTab === 'dashboard' || activeTab === 'dashboard-financiero') {
-      fetchReportData()
-    }
-  }, [selectedMonth, selectedYear, reportType, activeTab])
-
-  // --- Pagos y gastos: actualizan con filtros globales ---
-  useEffect(() => {
-    if (activeTab === 'pagos') {
-      fetchPagosData()
-    }
-  }, [activeTab, selectedMonth, selectedYear, pagosSearch, pagosMetodo, pagosEstado])
-
-  useEffect(() => {
-    if (activeTab === 'gastos') {
-      fetchGastosData()
-      fetchCategoriasGasto()
-    }
-  }, [activeTab, selectedMonth, selectedYear, gastosSearch, gastosCategoria])
-
-  const pagosPerPage = 10
-  const gastosPerPage = 10
-  
-  const router = useRouter()
-
-  // Opciones para los selectores
-  const months = [
-    { value: 1, label: "Enero" },
-    { value: 2, label: "Febrero" },
-    { value: 3, label: "Marzo" },
-    { value: 4, label: "Abril" },
-    { value: 5, label: "Mayo" },
-    { value: 6, label: "Junio" },
-    { value: 7, label: "Julio" },
-    { value: 8, label: "Agosto" },
-    { value: 9, label: "Septiembre" },
-    { value: 10, label: "Octubre" },
-    { value: 11, label: "Noviembre" },
-    { value: 12, label: "Diciembre" },
-  ]
-
-  const reportTypes = [
-    { value: "general", label: "Reporte General" },
-    { value: "clientes", label: "Clientes" },
-    { value: "pagos", label: "Pagos y Recaudación" },
-    { value: "gastos", label: "Gastos" },
-  ]
-
-  // Generador de años basado en baseYear
+  // Funciones auxiliares
   const generateYears = () => {
-    const years: number[] = []
-    for (let y = baseYear - 5; y <= baseYear + 1; y++) {
-      years.push(y)
+    const years = []
+    const currentYear = new Date().getFullYear()
+    for (let year = currentYear; year >= currentYear - 5; year--) {
+      years.push(year)
     }
     return years
   }
 
-  // Obtener nombre del mes seleccionado
-  const getMonthName = () => {
-    return months.find(m => m.value === selectedMonth)?.label || ""
-  }
-
-  // Fetch datos cuando cambien los filtros
-  const fetchReportData = async () => {
-    setIsLoading(true)
-    setError(null)
-    
-    try {
-      const monthStr = selectedMonth.toString().padStart(2, '0')
-      const response = await fetch(
-        `/api/reportes?month=${monthStr}&year=${selectedYear}&type=${reportType}`
-      )
-      
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`)
-      }
-      
-      const data = await response.json()
-      console.log('Datos recibidos de la API:', data) // Debug temporal
-      if ("message" in data) {
-        setReporteData({
-          reporteFinanciero: { ingresos: 0, gastos: 0, utilidad: 0, crecimiento: 0 },
-          reporteClientes: { activos: 0, total: 0, nuevos: 0, bajas: 0 }
-        })
-      } else {
-        // Asegurar que los datos tengan la estructura correcta
-        const reporteData = {
-          reporteFinanciero: {
-            ingresos: data.reporteFinanciero?.ingresos || 0,
-            gastos: data.reporteFinanciero?.gastos || 0,
-            utilidad: data.reporteFinanciero?.utilidad || 0,
-            crecimiento: data.reporteFinanciero?.crecimiento || 0
-          },
-          reporteClientes: {
-            total: data.reporteClientes?.total || 0,
-            activos: data.reporteClientes?.activos || 0,
-            nuevos: data.reporteClientes?.nuevos || 0,
-            bajas: data.reporteClientes?.bajas || 0
-          },
-          period: data.period
+  // Función para obtener los meses únicos que tienen datos
+  const getMesesConDatos = (clientes: ClienteAnualData[]) => {
+    const mesesSet = new Set<number>()
+    clientes.forEach(cliente => {
+      Object.keys(cliente.meses_estado).forEach(mesStr => {
+        const mes = parseInt(mesStr)
+        if (cliente.meses_estado[mes].total_pagado > 0) {
+          mesesSet.add(mes)
         }
-        console.log('Datos procesados:', reporteData) // Debug temporal
-        setReporteData(reporteData)
-      }
-    } catch (err) {
-      console.error("Error fetching report data:", err)
-      setError(err instanceof Error ? err.message : "Error desconocido")
-      setReporteData({
-        reporteFinanciero: { ingresos: 0, gastos: 0, utilidad: 0, crecimiento: 0 },
-        reporteClientes: { activos: 0, total: 0, nuevos: 0, bajas: 0 }
       })
-    } finally {
-      setIsLoading(false)
+    })
+    return Array.from(mesesSet).sort((a, b) => a - b)
+  }
+
+  const getAllMeses = () => {
+    return Array.from({ length: 12 }, (_, i) => i + 1)
+  }
+
+  // Funciones de fetch
+  const fetchSectores = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/reportes/sectores/')
+      const data = await response.json()
+      
+      if (data.success && Array.isArray(data.sectores)) {
+        // Filtrar y limpiar los sectores antes de establecerlos
+        const cleanSectores = data.sectores
+          .filter((sector: any) => sector && typeof sector === 'string' && sector.trim() !== '')
+          .map((sector: string) => sector.trim())
+        setSectores(cleanSectores)
+      } else {
+        setSectores([])
+      }
+    } catch (error) {
+      console.error("Error fetching sectores:", error)
+      setSectores([])
     }
   }
 
-  // Cargar reporte de clientes
-  const fetchClientesReport = async (action: string, params?: any) => {
+  const fetchUtilidadesAnuales = async () => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/reportes/utilidades-anuales/?year=${anioUtilidades}`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setUtilidadesAnuales(data)
+      }
+    } catch (error) {
+      console.error("Error fetching utilidades anuales:", error)
+    }
+  }
+
+  const fetchReporteAnual = async () => {
     setIsLoading(true)
     setError(null)
-    
     try {
-      const url = new URL('/api/reportes/clientes', window.location.origin)
-      url.searchParams.set('action', action)
-      
-      // Solo usar el filtro de año
-      const year = params?.year || selectedYear
-      url.searchParams.set('year', year.toString())
-      
-      // Para reportes mensuales, usar el mes actual
-      if (action === 'mensual') {
-        const month = params?.month || selectedMonth
-        url.searchParams.set('month', month.toString())
-      }
-      
-      const response = await fetch(url.toString())
-      
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`)
-      }
-      
+      const response = await fetch(`http://localhost:8000/api/reportes/anual-clientes/?year=${selectedYear}`)
       const data = await response.json()
+      
       if (data.success && data.data) {
-        if (action === 'detallado') {
-          setReporteDetalladoData({
-            clientes: data.data,
-            resumen: data.resumen,
-            anio: data.anio,
-            total_clientes: data.data.length
-          });
-          setClientesData([]);
-        } else {
-          setClientesData(Array.isArray(data.data) ? data.data : []);
-          setReporteDetalladoData(null);
-        }
-        return data;
+        setReporteAnualData(data.data)
       } else {
-        throw new Error(data.error || 'Error al cargar reporte');
+        setError(data.message || 'Error al cargar reporte anual')
+        setReporteAnualData(null)
       }
     } catch (err) {
-      console.error("Error fetching clientes report:", err)
       setError(err instanceof Error ? err.message : "Error desconocido")
-      setClientesData([])
-      setReporteDetalladoData(null)
+      setReporteAnualData(null)
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Fetch pagos y gastos al cambiar tab o filtros
-  const fetchPagosData = async () => {
+  const fetchReporteGraficoAnual = async () => {
     setIsLoading(true)
     setError(null)
     try {
-      const monthStr = selectedMonth.toString().padStart(2, '0')
-      const response = await fetch(`/api/reportes/pagos?month=${monthStr}&year=${selectedYear}`)
+      const response = await fetch(`http://localhost:8000/api/reportes/grafico-anual-recaudacion/?year=${selectedYear}`)
       const data = await response.json()
-      // Ajuste: usar data.data si existe, si no usar data directamente
-      if (data.success && Array.isArray(data.data)) {
-        setPagosData(data.data)
-      } else if (Array.isArray(data)) {
-        setPagosData(data)
-      } else if (data.data && Array.isArray(data.data)) {
-        setPagosData(data.data)
+      
+      if (data.success) {
+        setReporteGraficoData(data)
       } else {
-        setPagosData([])
+        setError(data.message || 'Error al cargar el reporte gráfico anual')
+        setReporteGraficoData(null)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido")
-      setPagosData([])
+      setReporteGraficoData(null)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const descargarReportePDF = async () => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/reportes/descargar-grafico-pdf/?year=${selectedYear}`, {
+        method: 'GET',
+      })
+      
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `reporte_recaudacion_anual_${selectedYear}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      } else {
+        setError('Error al descargar el PDF')
+      }
+    } catch (err) {
+      setError('Error al descargar el PDF')
+    }
+  }
+
+  const fetchPagosData = async () => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/reportes/pagos/?month=${pagosMes}&year=${selectedYear}`)
+      const data = await response.json()
+      
+      if (data.success) {
+        setPagosData(data.data || [])
+      }
+    } catch (error) {
+      console.error("Error fetching pagos:", error)
+      setPagosData([])
     }
   }
 
   const fetchGastosData = async () => {
-    setIsLoading(true)
-    setError(null)
     try {
-      const response = await fetch(`/api/reportes/gastos?month=${selectedMonth}&year=${selectedYear}`)
+      const response = await fetch(`http://localhost:8000/api/reportes/gastos/?month=${gastosMes}&year=${selectedYear}`)
       const data = await response.json()
-      if (data.success && Array.isArray(data.data)) {
-        setGastosData(data.data)
-      } else if (Array.isArray(data)) {
-        setGastosData(data)
-      } else {
-        setGastosData([])
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error desconocido")
-      setGastosData([])
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const fetchCategoriasGasto = async () => {
-    try {
-      const res = await fetch('/api/gastos/categorias')
-      if (res.ok) {
-        const data = await res.json()
-        setCategoriasGasto(Array.isArray(data) ? data : [])
-      }
-    } catch {}
-  }
-
-  // Preparar datos para gráficos
-  const datosFinancieros = [
-    { id: "ingresos", name: "Ingresos", monto: reporteData.reporteFinanciero?.ingresos || 0 },
-    { id: "gastos", name: "Gastos", monto: reporteData.reporteFinanciero?.gastos || 0 },
-    { id: "utilidad", name: "Utilidad", monto: reporteData.reporteFinanciero?.utilidad || 0 },
-  ]
-  const datosClientes = [
-    { id: "activos", name: "Activos", cantidad: reporteData.reporteClientes?.activos || 0 },
-    { id: "nuevos", name: "Nuevos", cantidad: reporteData.reporteClientes?.nuevos || 0 },
-    { id: "bajas", name: "Bajas", cantidad: reporteData.reporteClientes?.bajas || 0 },
-  ]
-  const hasDatos = datosFinancieros.some(d => d.monto > 0) || datosClientes.some(d => d.cantidad > 0)
-
-  // Exportar CSV
-  const exportarReporte = () => {
-    const headers = ['Mes', 'Año', 'Tipo de Reporte', 'Ingresos', 'Gastos', 'Utilidad', 'Clientes Activos']
-    const rows = [
-      [
-        getMonthName(),
-        selectedYear,
-        reportType,
-        reporteData.reporteFinanciero?.ingresos || 0,
-        reporteData.reporteFinanciero?.gastos || 0,
-        reporteData.reporteFinanciero?.utilidad || 0,
-        reporteData.reporteClientes?.activos || 0,
-      ]
-    ]
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n')
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = 'reporte.csv'
-    link.click()
-  }
-
-  // Exportar CSV de clientes
-  const exportarClientesCSV = () => {
-    if (reporteDetalladoData) {
-      // Exportar reporte detallado
-      const headers = [
-        'ID', 'Cédula', 'Nombres', 'Apellidos', 'Tipo Plan', 'Precio Plan', 'Sector', 'Estado', 
-        'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic', 'Total Año'
-      ]
       
-      const rows = reporteDetalladoData.clientes.map(cliente => [
-        cliente.id,
-        cliente.cedula,
-        cliente.nombres,
-        cliente.apellidos,
-        cliente.tipo_plan,
-        cliente.precio_plan,
-        cliente.sector,
-        cliente.estado,
-        ...Array.from({ length: 12 }, (_, i) => {
-          const mes = i + 1;
-          const pagoMes = cliente.pagos_por_mes[mes];
-          return pagoMes ? pagoMes.total : 0;
-        }),
-        cliente.total_pagado_anio
-      ])
-
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))
-      ].join('\n')
-
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = `reporte_detallado_clientes_${selectedYear}.csv`
-      link.click()
-    } else if (clientesData.length > 0) {
-      // Exportar reporte normal
-      const headers = ['ID', 'Cédula', 'Nombres', 'Apellidos', 'Plan', 'Precio', 'Sector', 'Estado', 'Fecha Registro']
-      const rows = clientesData.map(c => [
-        c.id, c.cedula, c.nombres, c.apellidos, c.tipo_plan, c.precio_plan, c.sector, c.estado, c.fecha_registro
-      ])
-
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))
-      ].join('\n')
-
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = 'reporte_clientes.csv'
-      link.click()
+      if (data.success) {
+        setGastosData(data.data || [])
+      }
+    } catch (error) {
+      console.error("Error fetching gastos:", error)
+      setGastosData([])
     }
   }
 
-  // --- Filtros y paginación pagos ---
-  const pagosFiltrados = pagosData.filter(p =>
-    (pagosSearch === "" ||
-      p.cliente_nombre.toLowerCase().includes(pagosSearch.toLowerCase()) ||
-      p.cliente_cedula.includes(pagosSearch) ||
-      p.numero_comprobante.toLowerCase().includes(pagosSearch.toLowerCase()) ||
-      p.concepto.toLowerCase().includes(pagosSearch.toLowerCase())
-    ) &&
-    (pagosMetodo === "todos" || p.metodo_pago === pagosMetodo) &&
-    (pagosEstado === "todos" || p.estado === pagosEstado)
-  )
-  const pagosTotalPages = Math.ceil(pagosFiltrados.length / pagosPerPage)
-  const pagosPageData = pagosFiltrados.slice((pagosPage-1)*pagosPerPage, pagosPage*pagosPerPage)
-  // --- Filtros y paginación gastos ---
-  const gastosFiltrados = gastosData.filter(g =>
-    (gastosSearch === "" ||
-      g.descripcion.toLowerCase().includes(gastosSearch.toLowerCase()) ||
-      g.categoria.toLowerCase().includes(gastosSearch.toLowerCase()) ||
-      (g.proveedor || "").toLowerCase().includes(gastosSearch.toLowerCase()) ||
-      (g.usuario_nombre || "").toLowerCase().includes(gastosSearch.toLowerCase())
-    ) &&
-    (gastosCategoria === "todas" || g.categoria === gastosCategoria)
-  )
-  const gastosTotalPages = Math.ceil(gastosFiltrados.length / gastosPerPage)
-  const gastosPageData = gastosFiltrados.slice((gastosPage-1)*gastosPerPage, gastosPage*gastosPerPage)
-  // --- Exportar CSV pagos ---
-  const exportarPagosCSV = () => {
-    const headers = ["Comprobante","Fecha","Cliente","Cédula","Plan","Concepto","Método","Monto","Estado"]
-    const rows = pagosFiltrados.map(p => [
-      p.numero_comprobante,
-      p.fecha_pago,
-      p.cliente_nombre,
-      p.cliente_cedula,
-      p.tipo_plan,
-      p.concepto,
-      p.metodo_pago,
-      p.monto,
-      p.estado
-    ])
-    const csvContent = [headers.join(','), ...rows.map(row => row.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = 'reporte_pagos.csv'
-    link.click()
-  }
-  // --- Exportar CSV gastos ---
-  const exportarGastosCSV = () => {
-    const headers = ["Fecha","Descripción","Categoría","Monto","Proveedor","Método","Responsable"]
-    const rows = gastosFiltrados.map(g => [
-      g.fecha_gasto,
-      g.descripcion,
-      g.categoria,
-      g.monto,
-      g.proveedor || '',
-      g.metodo_pago || '',
-      g.usuario_nombre || ''
-    ])
-    const csvContent = [headers.join(','), ...rows.map(row => row.map(x => `"${String(x).replace(/"/g, '""')}"`).join(','))].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = 'reporte_gastos.csv'
-    link.click()
+  // Funciones de pagos
+  const togglePago = (id: number) => {
+    setSelectedPagos(prev => 
+      prev.includes(id) 
+        ? prev.filter(p => p !== id)
+        : [...prev, id]
+    )
   }
 
-  // Cambiar la lógica de selección y envío:
-  const pagosNoEnviadosPage = pagosPageData.filter(p => !p.comprobante_enviado)
-  const canShowEnviarComprobantes = pagosNoEnviadosPage.length > 0
-  const togglePago = (id: number) => {
-    const pago = pagosPageData.find(p => p.id === id)
-    if (!pago || pago.comprobante_enviado) return
-    setSelectedPagos(prev => prev.includes(id) ? prev.filter(pid => pid !== id) : [...prev, id])
-  }
   const toggleAllPagos = () => {
-    const allIds = pagosNoEnviadosPage.map(p => p.id)
-    const allSelected = allIds.every(id => selectedPagos.includes(id))
-    setSelectedPagos(allSelected ? selectedPagos.filter(id => !allIds.includes(id)) : [...selectedPagos, ...allIds.filter(id => !selectedPagos.includes(id))])
+    const currentPagePagos = pagosFiltrados.slice((pagosPage - 1) * pagosPageSize, pagosPage * pagosPageSize)
+    const allSelected = currentPagePagos.every(p => selectedPagos.includes(p.id))
+    
+    if (allSelected) {
+      setSelectedPagos(prev => prev.filter(id => !currentPagePagos.some(p => p.id === id)))
+    } else {
+      setSelectedPagos(prev => [...new Set([...prev, ...currentPagePagos.map(p => p.id)])])
+    }
   }
+
   const enviarComprobantesMasivos = async () => {
-    // Solo enviar los que no han sido enviados
-    const idsAEnviar = selectedPagos.filter(id => {
-      const pago = pagosPageData.find(p => p.id === id)
-      return pago && !pago.comprobante_enviado
-    })
-    if (idsAEnviar.length === 0) return
-    const confirmMsg = `¿Seguro que deseas enviar comprobantes por email a ${idsAEnviar.length} pago(s) seleccionado(s)?`
-    if (!window.confirm(confirmMsg)) return
     setIsSendingComprobantes(true)
     try {
-      const res = await fetch('/api/reportes/pagos', {
+      const response = await fetch('/api/comprobantes/enviar-masivo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pagoIds: idsAEnviar })
+        body: JSON.stringify({ pagoIds: selectedPagos })
       })
-      const data = await res.json()
-      if (data.success) {
-        const exitosos = data.resultados.filter((r: { success: boolean }) => r.success)
-        const fallidos = data.resultados.filter((r: { success: boolean }) => !r.success)
-        let msg = `✅ Comprobantes enviados: ${exitosos.length}`
-        if (fallidos.length > 0) {
-          msg += `\n❌ Errores: ${fallidos.length}\nIDs con error: ${fallidos.map((r: any) => r.id).join(', ')}`
-        }
-        alert(msg)
+      
+      if (response.ok) {
+        alert('Comprobantes enviados exitosamente')
+        setSelectedPagos([])
+        fetchPagosData()
       } else {
-        alert('Error al enviar comprobantes: ' + (data.message || ''))
+        alert('Error al enviar comprobantes')
       }
-      setSelectedPagos([])
-      fetchPagosData()
-    } catch (err) {
-      alert('Error inesperado al enviar comprobantes')
+    } catch (error) {
+      alert('Error al enviar comprobantes')
     } finally {
       setIsSendingComprobantes(false)
     }
   }
 
-  // Resetear filtros a valores base
-  const resetFilters = () => {
-    setSelectedMonth(now.getMonth() + 1)
-    setSelectedYear(baseYear)
-    setReportType("general")
-  }
+  // Cálculos derivados
+  const pagosFiltrados = pagosData.filter(pago => {
+    const matchesSearch = !pagosSearch || 
+      pago.cliente_nombre.toLowerCase().includes(pagosSearch.toLowerCase()) ||
+      pago.cliente_cedula.includes(pagosSearch) ||
+      pago.numero_comprobante.includes(pagosSearch) ||
+      pago.concepto.toLowerCase().includes(pagosSearch.toLowerCase())
+    
+    const matchesMetodo = pagosMetodo === "todos" || pago.metodo_pago === pagosMetodo
+    const matchesEstado = pagosEstado === "todos" || pago.estado === pagosEstado
+    
+    return matchesSearch && matchesMetodo && matchesEstado
+  })
+
+  const pagosPageData = pagosFiltrados.slice((pagosPage - 1) * pagosPageSize, pagosPage * pagosPageSize)
+  const pagosTotalPages = Math.ceil(pagosFiltrados.length / pagosPageSize)
+  const pagosNoEnviadosPage = pagosPageData.filter(p => !p.comprobante_enviado)
+  const canShowEnviarComprobantes = pagosNoEnviadosPage.length > 0
+
+  // useEffect hooks
+  useEffect(() => {
+    fetchSectores()
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'utilidades') {
+      fetchUtilidadesAnuales()
+    }
+  }, [activeTab, anioUtilidades])
+
+  useEffect(() => {
+    if (activeTab === 'anual') {
+      fetchReporteAnual()
+      fetchReporteGraficoAnual()
+    }
+  }, [activeTab, selectedYear])
+
+  useEffect(() => {
+    if (activeTab === 'grafico') {
+      fetchReporteGraficoAnual()
+    }
+  }, [activeTab, selectedYear])
+
+  useEffect(() => {
+    if (activeTab === 'anual' && !reporteAnualData) {
+      fetchReporteAnual()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'pagos') {
+      fetchPagosData()
+    }
+  }, [activeTab, selectedYear, pagosMes, pagosSearch, pagosMetodo, pagosEstado])
+
+  useEffect(() => {
+    if (activeTab === 'gastos') {
+      fetchGastosData()
+    }
+  }, [activeTab, selectedYear, gastosMes])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -655,440 +447,670 @@ export default function ReportesPage() {
                 <p className="text-slate-600">Dashboard ejecutivo y reportes detallados</p>
               </div>
             </div>
-            
-           
           </div>
 
           {/* Tabs de navegación */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="dashboard" className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" /> Dashboard
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="anual" className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" /> Anual
               </TabsTrigger>
-              <TabsTrigger value="clientes" className="flex items-center gap-2">
-                <Users className="h-4 w-4" /> Clientes
+              <TabsTrigger value="grafico" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" /> Gráfico
               </TabsTrigger>
-             
+              <TabsTrigger value="utilidades" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" /> Utilidades
+              </TabsTrigger>
               <TabsTrigger value="pagos" className="flex items-center gap-2">
                 <DollarSign className="h-4 w-4" /> Pagos
               </TabsTrigger>
-             
-              <TabsTrigger value="dashboard-financiero" className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" /> Dashboard Financiero
+              <TabsTrigger value="gastos" className="flex items-center gap-2">
+                <TrendingDown className="h-4 w-4" /> Gastos
               </TabsTrigger>
-             
-             
             </TabsList>
 
-            {/* Tab Dashboard */}
-            <TabsContent value="dashboard" className="space-y-6">
+            {/* Tab Reporte Anual de Clientes */}
+            <TabsContent value="anual" className="space-y-6">
               {/* Filtros */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Filter className="h-5 w-5" />
-                    Filtros de Reporte
+                    <Calendar className="h-5 w-5" />
+                    Reporte Anual de Clientes - {selectedYear}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                         <div>
-                       <label className="text-sm font-medium">Mes</label>
-                       <Select value={selectedMonth.toString()} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
-                         <SelectTrigger>
-                           <SelectValue placeholder="Seleccionar mes" />
-                         </SelectTrigger>
-                         <SelectContent>
-                           {months.map((month) => (
-                             <SelectItem key={month.value} value={month.value.toString()}>
-                               {month.label}
-                             </SelectItem>
-                           ))}
-                         </SelectContent>
-                       </Select>
-                     </div>
-                     
-                     <div>
-                       <label className="text-sm font-medium">Año</label>
-                       <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
-                         <SelectTrigger>
-                           <SelectValue placeholder="Seleccionar año" />
-                         </SelectTrigger>
-                         <SelectContent>
-                           {generateYears().map((year) => (
-                             <SelectItem key={year} value={year.toString()}>
-                               {year}
-                             </SelectItem>
-                           ))}
-                         </SelectContent>
-                       </Select>
-                     </div>
-                    
-                                         <div>
-                       <label className="text-sm font-medium">Tipo de Reporte</label>
-                       <Select value={reportType} onValueChange={setReportType}>
-                         <SelectTrigger>
-                           <SelectValue placeholder="Seleccionar tipo" />
-                         </SelectTrigger>
-                         <SelectContent>
-                           {reportTypes.map((type) => (
-                             <SelectItem key={type.value} value={type.value}>
-                               {type.label}
-                             </SelectItem>
-                           ))}
-                         </SelectContent>
-                       </Select>
-                     </div>
-                    
-                    <div className="flex items-end">
-                      <Button variant="outline" onClick={resetFilters} className="w-full">
-                        Resetear
+                  <div className="flex flex-row flex-wrap gap-4 items-end">
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="text-sm font-medium">Año</label>
+                      <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar año" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {generateYears().map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="text-sm font-medium">Buscar Cliente</label>
+                      <Input
+                        placeholder="Nombre o cédula..."
+                        value={anualSearch}
+                        onChange={(e) => setAnualSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="text-sm font-medium">Sector</label>
+                      <Select value={anualSector} onValueChange={setAnualSector}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Todos los sectores" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="todos">Todos los sectores</SelectItem>
+                          {Array.isArray(sectores) && sectores.length > 0 && sectores
+                            .filter(sector => sector && typeof sector === 'string' && sector.trim() !== '')
+                            .map((sector) => {
+                              const cleanSector = sector.trim()
+                              // Verificación adicional para evitar valores vacíos
+                              if (!cleanSector || cleanSector === '') {
+                                return null
+                              }
+                              return (
+                                <SelectItem key={cleanSector} value={cleanSector}>
+                                  {cleanSector}
+                                </SelectItem>
+                              )
+                            }).filter(Boolean)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="min-w-[150px]">
+                      <Button onClick={() => fetchReporteAnual()} className="w-full flex items-center gap-2">
+                        <RefreshCw className="h-4 w-4" /> Actualizar
                       </Button>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* KPI Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                      <TrendingUp className="h-4 w-4 mr-2" />
-                      Ingresos Totales
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                                    <div className="text-3xl font-bold">
-                  ${(reporteData.reporteFinanciero?.ingresos || 0).toLocaleString()}
-                </div>
-                <p className="text-xs opacity-75 mt-1">
-                  {(reporteData.reporteFinanciero?.crecimiento || 0) > 0 ? '+' : ''}{(reporteData.reporteFinanciero?.crecimiento || 0).toFixed(1)}% vs mes anterior
-                </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                      <TrendingDown className="h-4 w-4 mr-2" />
-                      Gastos Totales
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                                    <div className="text-3xl font-bold">
-                  ${(reporteData.reporteFinanciero?.gastos || 0).toLocaleString()}
-                </div>
-                    <p className="text-xs opacity-75 mt-1">
-                      Gastos del período
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                      <DollarSign className="h-4 w-4 mr-2" />
-                      Utilidad Neta
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                                    <div className="text-3xl font-bold">
-                  ${(reporteData.reporteFinanciero?.utilidad || 0).toLocaleString()}
-                </div>
-                    <p className="text-xs opacity-75 mt-1">
-                      Ingresos - Gastos
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                      <Users className="h-4 w-4 mr-2" />
-                      Clientes Activos
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                                    <div className="text-3xl font-bold">
-                  {(reporteData.reporteClientes?.activos || 0).toLocaleString()}
-                </div>
-                <p className="text-xs opacity-75 mt-1">
-                  {reporteData.reporteClientes?.nuevos || 0} nuevos este mes
-                </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Gráficos */}
-              {hasDatos && reporteData.reporteFinanciero && reporteData.reporteClientes && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Análisis Financiero</CardTitle>
+              {/* Resumen del Año */}
+              {reporteAnualData && (
+                <div className="flex flex-row overflow-x-auto gap-4 pb-4">
+                  <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white min-w-[200px] flex-shrink-0">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium opacity-90">Total Clientes</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={datosFinancieros}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Monto']} />
-                          <Bar dataKey="monto" fill="#3b82f6" />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <div className="text-3xl font-bold">{reporteAnualData.total_clientes}</div>
                     </CardContent>
                   </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Estado de Clientes</CardTitle>
+                  <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white min-w-[200px] flex-shrink-0">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium opacity-90">Total Recaudado</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={datosClientes}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            outerRadius={80}
-                            fill="#8884d8"
-                            dataKey="cantidad"
-                          >
-                                                       {datosClientes.map((entry, index) => (
-                             <Cell key={`cell-${entry.id}-${index}`} fill={['#3b82f6', '#10b981', '#ef4444'][index % 3]} />
-                           ))}
-                          </Pie>
-                          <Tooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      <div className="text-3xl font-bold">${reporteAnualData.resumen.total_recaudado_anio.toLocaleString()}</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white min-w-[200px] flex-shrink-0">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium opacity-90">Total Pagos</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold">{reporteAnualData.resumen.total_pagos_anio}</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white min-w-[200px] flex-shrink-0">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium opacity-90">Promedio Cumplimiento</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold">{reporteAnualData.resumen.promedio_cumplimiento}%</div>
                     </CardContent>
                   </Card>
                 </div>
               )}
 
+              {/* Tabla de Clientes con Estado de Pagos */}
+              {reporteAnualData && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="h-5 w-5" />
+                      Estado de Pagos por Cliente - {selectedYear}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="min-w-[150px]">Cliente</TableHead>
+                            <TableHead className="min-w-[100px]">Cédula</TableHead>
+                            <TableHead className="min-w-[120px]">Plan</TableHead>
+                            <TableHead className="min-w-[100px]">Sector</TableHead>
+                            <TableHead className="min-w-[100px]">Estado</TableHead>
+                            {getAllMeses().map((mes) => (
+                              <TableHead key={mes} className="min-w-[80px] text-center">
+                                {new Date(selectedYear, mes - 1).toLocaleDateString('es-ES', { month: 'short' })}
+                              </TableHead>
+                            ))}
+                            <TableHead className="min-w-[100px]">Total Anual</TableHead>
+                            <TableHead className="min-w-[120px]">Cumplimiento</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {reporteAnualData.clientes
+                            .filter(cliente => 
+                              (anualSearch === "" || 
+                               cliente.nombre_completo.toLowerCase().includes(anualSearch.toLowerCase()) ||
+                               cliente.cedula.includes(anualSearch)) &&
+                              (anualSector === "todos" || cliente.sector === anualSector)
+                            )
+                            .map((cliente) => (
+                              <TableRow key={cliente.id} className="hover:bg-gray-50">
+                                <TableCell className="font-medium">{cliente.nombre_completo}</TableCell>
+                                <TableCell>{cliente.cedula}</TableCell>
+                                <TableCell>{cliente.tipo_plan}</TableCell>
+                                <TableCell>{cliente.sector}</TableCell>
+                                <TableCell>
+                                  <Badge className={cliente.estado === 'activo' ? 'bg-green-500' : 'bg-red-500'}>
+                                    {cliente.estado}
+                                  </Badge>
+                                </TableCell>
+                                {getAllMeses().map((mes) => {
+                                  const mesData = cliente.meses_estado[mes]
+                                  const tienePagos = mesData && mesData.total_pagado > 0
+                                  return (
+                                    <TableCell key={mes} className="text-center">
+                                      <div className="flex flex-col items-center">
+                                        <div 
+                                          className={`w-8 h-8 rounded-full mx-auto shadow-md ${
+                                            tienePagos 
+                                              ? 'bg-green-500' 
+                                              : 'bg-red-500'
+                                          }`}
+                                        />
+                                        {tienePagos && (
+                                          <span className="text-gray-600 mt-1 font-medium text-xs">
+                                            ${mesData.total_pagado}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </TableCell>
+                                  )
+                                })}
+                                <TableCell className="font-medium">
+                                  ${cliente.total_anual.toLocaleString()}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge 
+                                    className={`${
+                                      cliente.porcentaje_cumplimiento >= 80 
+                                        ? 'bg-green-500' 
+                                        : cliente.porcentaje_cumplimiento >= 60 
+                                          ? 'bg-yellow-500' 
+                                          : 'bg-red-500'
+                                    } hover:opacity-80`}
+                                  >
+                                    {cliente.porcentaje_cumplimiento}%
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          {reporteAnualData.clientes.filter(cliente => 
+                            (anualSearch === "" || 
+                             cliente.nombre_completo.toLowerCase().includes(anualSearch.toLowerCase()) ||
+                             cliente.cedula.includes(anualSearch)) &&
+                            (anualSector === "todos" || cliente.sector === anualSector)
+                          ).length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={16} className="text-center py-8">
+                                <div className="text-center">
+                                  <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                                  <h3 className="text-lg font-semibold text-gray-700 mb-2">No se encontraron clientes</h3>
+                                  <p className="text-gray-500">Intenta ajustar los filtros de búsqueda o sector</p>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Estado de carga */}
+              {isLoading && (
+                <Card>
+                  <CardContent className="flex items-center justify-center py-12">
+                    <div className="text-center">
+                      <RefreshCw className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-500" />
+                      <h3 className="text-lg font-semibold text-gray-700 mb-2">Cargando reporte anual</h3>
+                      <p className="text-gray-500">Obteniendo datos de clientes y pagos...</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Error */}
               {error && (
                 <Card className="border-red-200 bg-red-50">
-                  <CardContent className="pt-6">
-                    <p className="text-red-600">{error}</p>
+                  <CardContent className="flex items-center justify-center py-8">
+                    <div className="text-center">
+                      <div className="text-red-500 text-4xl mb-4">⚠️</div>
+                      <h3 className="text-lg font-semibold text-red-700 mb-2">Error al cargar datos</h3>
+                      <p className="text-red-600 mb-4">{error}</p>
+                      <Button onClick={fetchReporteAnual} variant="outline">
+                        Reintentar
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Sin datos */}
+              {!isLoading && !error && !reporteAnualData && (
+                <Card>
+                  <CardContent className="flex items-center justify-center py-12">
+                    <div className="text-center">
+                      <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                      <h3 className="text-lg font-semibold text-gray-700 mb-2">No hay datos disponibles</h3>
+                      <p className="text-gray-500">Selecciona un año para ver el reporte anual</p>
+                    </div>
                   </CardContent>
                 </Card>
               )}
             </TabsContent>
 
-            {/* Tab Clientes */}
-            <TabsContent value="clientes" className="space-y-6">
+            {/* Tab Reporte Gráfico Anual */}
+            <TabsContent value="grafico" className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Reportes de Clientes
+                    <BarChart3 className="h-5 w-5" />
+                    Reporte Gráfico Anual de Recaudación - {selectedYear}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {/* Filtro de año para reportes de clientes */}
-                  <Card className="mb-6">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Filter className="h-5 w-5" />
-                        Filtro por Año
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center gap-4">
-                        <div className="flex-1 max-w-xs">
-                          <label className="text-sm font-medium">Año</label>
-                          <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar año" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {generateYears().map((year) => (
-                                <SelectItem key={year} value={year.toString()}>
-                                  {year}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        
-                        <div className="flex items-end">
-                          <Button 
-                            onClick={() => {
-                              setClientesData([])
-                              setReporteDetalladoData(null)
-                            }}
-                            variant="outline"
-                          >
-                            Limpiar
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Botones de reporte de clientes */}
-                  <div className="flex flex-wrap gap-4 mb-6 items-center justify-center">
-                    <Button onClick={() => handleClientesReport('general')} disabled={isLoading} className="flex items-center gap-2">
-                      <FileText className="h-4 w-4" /> Reporte General
-                    </Button>
-                    <Button onClick={() => handleClientesReport('anual')} disabled={isLoading} className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" /> Reporte Anual
-                    </Button>
-                    <Button onClick={() => handleClientesReport('mensual')} disabled={isLoading} className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" /> Reporte Mensual
-                    </Button>
-                    <Button 
-                      onClick={exportarClientesCSV}
-                      disabled={clientesData.length === 0 && !reporteDetalladoData}
-                      className="flex items-center gap-2"
-                    >
-                      <Download className="h-4 w-4" />
-                      Exportar CSV
-                    </Button>
+                  {/* Filtros */}
+                  <div className="flex flex-row flex-wrap gap-4 items-end mb-6">
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="text-sm font-medium">Año</label>
+                      <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar año" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {generateYears().map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <Button onClick={() => fetchReporteGraficoAnual()} className="flex items-center gap-2">
+                        <RefreshCw className="h-4 w-4" /> Actualizar
+                      </Button>
+                      <Button 
+                        onClick={descargarReportePDF} 
+                        variant="outline" 
+                        className="flex items-center gap-2 bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                      >
+                        <FileText className="h-4 w-4" /> Descargar PDF
+                      </Button>
+                    </div>
                   </div>
-                  
-                  {/* Filtros específicos para clientes */}
 
-
-                                    {/* Resumen del reporte detallado */}
-                  {/* Eliminar la opción y la lógica de reporteDetalladoData */}
-
-                  {/* Tabla de resultados */}
-                  {/* --- Renderizado de la tabla de clientes según el tipo de reporte --- */}
-                  {clientesReportType === 'general' && clientesData.length > 0 && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse border border-gray-300">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="border border-gray-300 px-4 py-2">ID</th>
-                            <th className="border border-gray-300 px-4 py-2">Cédula</th>
-                            <th className="border border-gray-300 px-4 py-2">Nombres</th>
-                            <th className="border border-gray-300 px-4 py-2">Apellidos</th>
-                            <th className="border border-gray-300 px-4 py-2">Plan</th>
-                            <th className="border border-gray-300 px-4 py-2">Precio</th>
-                            <th className="border border-gray-300 px-4 py-2">Sector</th>
-                            <th className="border border-gray-300 px-4 py-2">Estado</th>
-                            <th className="border border-gray-300 px-4 py-2">Fecha Registro</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {clientesData.map((cliente, index) => (
-                            <tr key={`cliente-${cliente.id}-${index}`}>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.id}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.cedula}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.nombres}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.apellidos}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.tipo_plan}</td>
-                              <td className="border border-gray-300 px-4 py-2">${cliente.precio_plan}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.sector}</td>
-                              <td className="border border-gray-300 px-4 py-2">
-                                <Badge variant={cliente.estado === 'activo' ? 'default' : 'secondary'}>
-                                  {cliente.estado}
-                                </Badge>
-                              </td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.fecha_registro}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                  {/* Estado de carga */}
+                  {isLoading && (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="h-8 w-8 animate-spin mr-2" />
+                      <span>Cargando reporte gráfico...</span>
                     </div>
                   )}
 
-                  {clientesReportType === 'anual' && clientesData.length > 0 && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse border border-gray-300">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="border border-gray-300 px-4 py-2">Cliente</th>
-                            <th className="border border-gray-300 px-4 py-2">Plan</th>
-                            <th className="border border-gray-300 px-4 py-2">Sector</th>
-                            <th className="border border-gray-300 px-4 py-2">Estado</th>
-                            {Array.from({ length: 12 }, (_, i) => (
-                              <th key={i} className="border border-gray-300 px-2 py-2 text-xs">{months[i].label}</th>
-                            ))}
-                            <th className="border border-gray-300 px-4 py-2">Total Año</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {clientesData.map((cliente, index) => (
-                            <tr key={`anual-${cliente.id}-${index}`}>
-                              <td className="border border-gray-300 px-4 py-2">
-                                <div className="font-medium">{cliente.nombres} {cliente.apellidos}</div>
-                                <div className="text-xs text-gray-500">{cliente.cedula}</div>
-                              </td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.tipo_plan}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.sector}</td>
-                              <td className="border border-gray-300 px-4 py-2">
-                                <Badge variant={cliente.estado === 'activo' ? 'default' : 'secondary'}>{cliente.estado}</Badge>
-                              </td>
-                              {Array.from({ length: 12 }, (_, i) => {
-                                const mes = i + 1;
-                                const pagoMes = cliente.pagos_por_mes?.[mes];
-                                return (
-                                  <td key={mes} className="border border-gray-300 px-2 py-2 text-xs text-center">
-                                    {pagoMes && (pagoMes.cantidad || pagoMes.total) ? (
-                                      <div className="font-medium text-green-600">
-                                        {pagoMes.cantidad ? `${pagoMes.cantidad} pago${pagoMes.cantidad > 1 ? 's' : ''}` : ''}
-                                        {pagoMes.cantidad && pagoMes.total ? ' / ' : ''}
-                                        {pagoMes.total ? `$${pagoMes.total}` : ''}
-                                      </div>
-                                    ) : (
-                                      <div className="text-gray-400">-</div>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                              <td className="border border-gray-300 px-4 py-2 font-bold">
-                                <div className="text-green-600">{cliente.total_pagos_anio || 0}</div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                  {/* Error */}
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                      <p className="text-red-800">{error}</p>
                     </div>
                   )}
 
-                  {clientesReportType === 'mensual' && clientesData.length > 0 && (
-                    <div className="overflow-x-auto">
-                      {/* Encabezado con el mes y año seleccionado */}
-                      <div className="mb-2 text-sm font-semibold text-blue-700">
-                        Reporte Mensual: {getMonthName()} {selectedYear}
+                  {/* Gráfico de Recaudación Mensual */}
+                  {reporteGraficoData && !isLoading && (
+                    <div className="space-y-6">
+                      {/* Estadísticas Generales */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 justify-items-center">
+                        <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white w-full max-w-xs shadow-lg hover:shadow-xl transition-shadow duration-300">
+                          <CardHeader className="pb-2 text-center">
+                            <CardTitle className="text-sm font-medium opacity-90">Total Anual</CardTitle>
+                          </CardHeader>
+                          <CardContent className="text-center">
+                            <div className="text-3xl font-bold mb-1">${reporteGraficoData.estadisticas.total_anual.toLocaleString()}</div>
+                            <p className="text-xs opacity-75">Recaudación total del año</p>
+                          </CardContent>
+                        </Card>
+                        <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white w-full max-w-xs shadow-lg hover:shadow-xl transition-shadow duration-300">
+                          <CardHeader className="pb-2 text-center">
+                            <CardTitle className="text-sm font-medium opacity-90">Promedio Mensual</CardTitle>
+                          </CardHeader>
+                          <CardContent className="text-center">
+                            <div className="text-3xl font-bold mb-1">${reporteGraficoData.estadisticas.promedio_mensual.toLocaleString()}</div>
+                            <p className="text-xs opacity-75">Promedio por mes</p>
+                          </CardContent>
+                        </Card>
+                        <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white w-full max-w-xs shadow-lg hover:shadow-xl transition-shadow duration-300">
+                          <CardHeader className="pb-2 text-center">
+                            <CardTitle className="text-sm font-medium opacity-90">Total Pagos</CardTitle>
+                          </CardHeader>
+                          <CardContent className="text-center">
+                            <div className="text-3xl font-bold mb-1">{reporteGraficoData.estadisticas.total_pagos_anual}</div>
+                            <p className="text-xs opacity-75">Pagos realizados</p>
+                          </CardContent>
+                        </Card>
+                        <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white w-full max-w-xs shadow-lg hover:shadow-xl transition-shadow duration-300">
+                          <CardHeader className="pb-2 text-center">
+                            <CardTitle className="text-sm font-medium opacity-90">Año Analizado</CardTitle>
+                          </CardHeader>
+                          <CardContent className="text-center">
+                            <div className="text-3xl font-bold mb-1">{reporteGraficoData.anio}</div>
+                            <p className="text-xs opacity-75">Período del reporte</p>
+                          </CardContent>
+                        </Card>
                       </div>
-                      <table className="w-full border-collapse border border-gray-300">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="border border-gray-300 px-4 py-2">Cliente</th>
-                            <th className="border border-gray-300 px-4 py-2">Cédula</th>
-                            <th className="border border-gray-300 px-4 py-2">Plan</th>
-                            <th className="border border-gray-300 px-4 py-2">Mes</th>
-                            <th className="border border-gray-300 px-4 py-2">Monto Pagado</th>
-                            <th className="border border-gray-300 px-4 py-2">Cantidad Pagos</th>
-                            <th className="border border-gray-300 px-4 py-2">Fechas de Pago</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {clientesData.map((cliente, index) => (
-                            <tr key={`mensual-${cliente.id}-${index}`}>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.nombres} {cliente.apellidos}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.cedula}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.tipo_plan}</td>
-                              <td className="border border-gray-300 px-4 py-2">{getMonthName()}</td>
-                              <td className="border border-gray-300 px-4 py-2">${cliente.monto_pagado_mes || 0}</td>
-                              <td className="border border-gray-300 px-4 py-2">{cliente.cantidad_pagos_mes || 0}</td>
-                              <td className="border border-gray-300 px-4 py-2">{Array.isArray(cliente.fechas_pago_mes) ? cliente.fechas_pago_mes.join(', ') : ''}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+
+                      {/* Gráfico Financiero Profesional */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <TrendingUp className="h-5 w-5 text-green-600" />
+                            Gráfico Financiero Anual
+                          </CardTitle>
+                          <p className="text-sm text-gray-600">
+                            Análisis profesional de la recaudación mensual durante {reporteGraficoData.anio}
+                          </p>
+                          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                              <span className="text-sm text-blue-700 font-medium">
+                                Datos completos del año {reporteGraficoData.anio} - Análisis financiero detallado
+                              </span>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-6">
+                            {/* Selector de tipo de gráfico */}
+                            <div className="flex justify-center gap-4">
+                              <Button 
+                                variant="outline" 
+                                className="flex items-center gap-2"
+                                onClick={() => setChartType('bar')}
+                              >
+                                <BarChart3 className="h-4 w-4" />
+                                Gráfico de Barras
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                className="flex items-center gap-2"
+                                onClick={() => setChartType('line')}
+                              >
+                                <TrendingUp className="h-4 w-4" />
+                                Gráfico de Líneas
+                              </Button>
+                            </div>
+
+                            {/* Gráfico financiero profesional */}
+                            <FinancialChart 
+                              data={reporteGraficoData} 
+                              chartType={chartType} 
+                            />
+
+                            {/* Análisis financiero */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                              <Card className="bg-gradient-to-r from-green-50 to-green-100 border-green-200">
+                                <CardContent className="p-4">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <TrendingUp className="h-4 w-4 text-green-600" />
+                                    <span className="text-sm font-semibold text-green-800">Tendencia Positiva</span>
+                                  </div>
+                                  <p className="text-xs text-green-700">
+                                    La recaudación muestra una tendencia creciente a lo largo del año
+                                  </p>
+                                </CardContent>
+                              </Card>
+                              
+                              <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
+                                <CardContent className="p-4">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <DollarSign className="h-4 w-4 text-blue-600" />
+                                    <span className="text-sm font-semibold text-blue-800">Crecimiento Estable</span>
+                                  </div>
+                                  <p className="text-xs text-blue-700">
+                                    Promedio mensual de ${reporteGraficoData.estadisticas.promedio_mensual.toLocaleString()}
+                                  </p>
+                                </CardContent>
+                              </Card>
+                              
+                              <Card className="bg-gradient-to-r from-purple-50 to-purple-100 border-purple-200">
+                                <CardContent className="p-4">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Calendar className="h-4 w-4 text-purple-600" />
+                                    <span className="text-sm font-semibold text-purple-800">Período Analizado</span>
+                                  </div>
+                                  <p className="text-xs text-purple-700">
+                                    {reporteGraficoData.estadisticas.total_pagos_anual} pagos en {reporteGraficoData.anio}
+                                  </p>
+                                </CardContent>
+                              </Card>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Tabla de Datos Detallados */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-center">Datos Detallados por Mes</CardTitle>
+                          <p className="text-sm text-gray-600 text-center">
+                            Información completa de recaudación y pagos por mes
+                          </p>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="overflow-x-auto">
+                            <Table className="w-full">
+                              <TableHeader>
+                                <TableRow className="bg-gray-50">
+                                  <TableHead className="text-center font-bold">Mes</TableHead>
+                                  <TableHead className="text-center font-bold">Recaudación</TableHead>
+                                  <TableHead className="text-center font-bold">Total Pagos</TableHead>
+                                  <TableHead className="text-center font-bold">Variación</TableHead>
+                                  <TableHead className="text-center font-bold">Estado</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {reporteGraficoData.datos_mensuales.map((mes) => {
+                                  const variacion = reporteGraficoData.variacion_mensual.find(v => v.mes === mes.mes)
+                                                                     return (
+                                     <TableRow key={mes.mes} className="hover:bg-gray-50 transition-colors">
+                                       <TableCell className="font-medium text-center">{mes.nombre_mes}</TableCell>
+                                       <TableCell className="text-center font-semibold">${mes.total_recaudado.toLocaleString()}</TableCell>
+                                       <TableCell className="text-center">{mes.total_pagos}</TableCell>
+                                       <TableCell className="text-center">
+                                         {variacion && (
+                                           <span className={`font-bold px-2 py-1 rounded-full text-xs ${
+                                             variacion.variacion_porcentual > 0 ? 'bg-green-100 text-green-700' : 
+                                             variacion.variacion_porcentual < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'
+                                           }`}>
+                                             {variacion.variacion_porcentual > 0 ? '+' : ''}{variacion.variacion_porcentual}%
+                                           </span>
+                                         )}
+                                       </TableCell>
+                                       <TableCell className="text-center">
+                                         {mes.es_mayor_recaudacion && (
+                                           <Badge className="bg-green-100 text-green-800 border-green-300">↑ Mayor</Badge>
+                                         )}
+                                         {mes.es_menor_recaudacion && (
+                                           <Badge className="bg-red-100 text-red-800 border-red-300">↓ Menor</Badge>
+                                         )}
+                                         {!mes.es_mayor_recaudacion && !mes.es_menor_recaudacion && (
+                                           <Badge variant="outline" className="border-gray-300">Normal</Badge>
+                                         )}
+                                       </TableCell>
+                                     </TableRow>
+                                   )
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Resumen Ejecutivo */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-center">Resumen Ejecutivo</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-gray-800">Meses Destacados</h4>
+                              <div className="space-y-2">
+                                {reporteGraficoData.estadisticas.meses_mayor_recaudacion.length > 0 && (
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                                    <span className="text-sm">
+                                      <strong>Mayor recaudación:</strong> {reporteGraficoData.estadisticas.meses_mayor_recaudacion.map(m => m.nombre_mes).join(', ')}
+                                    </span>
+                                  </div>
+                                )}
+                                {reporteGraficoData.estadisticas.meses_menor_recaudacion.length > 0 && (
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                                    <span className="text-sm">
+                                      <strong>Menor recaudación:</strong> {reporteGraficoData.estadisticas.meses_menor_recaudacion.map(m => m.nombre_mes).join(', ')}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="space-y-4">
+                              <h4 className="font-semibold text-gray-800">Recomendaciones</h4>
+                              <div className="space-y-2 text-sm text-gray-600">
+                                <div className="flex items-start gap-2">
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                                  <span>Analizar estrategias de los meses con mayor recaudación</span>
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                                  <span>Implementar campañas especiales en meses de baja recaudación</span>
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                                  <span>Mantener seguimiento continuo de pagos pendientes</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
                     </div>
                   )}
 
-                  {/* Mensaje si no hay datos */}
-                  {!isLoading && clientesData.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">No hay datos de clientes para mostrar</div>
+                  {/* Estado sin datos */}
+                  {!reporteGraficoData && !isLoading && !error && (
+                    <div className="text-center py-8">
+                      <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-700 mb-2">No hay datos disponibles</h3>
+                      <p className="text-gray-500">Selecciona un año para ver el reporte gráfico anual</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab Utilidades Anuales */}
+            <TabsContent value="utilidades" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />
+                    Utilidades Anuales - {anioUtilidades}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {/* Filtro de año para utilidades */}
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="flex-1 max-w-xs">
+                      <label className="text-sm font-medium">Año para Utilidades</label>
+                      <Select value={anioUtilidades.toString()} onValueChange={(value) => setAnioUtilidades(parseInt(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar año" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {generateYears().map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button onClick={() => fetchUtilidadesAnuales()} className="flex items-center gap-2">
+                        <RefreshCw className="h-4 w-4" /> Actualizar
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Tarjetas de Utilidades */}
+                  {utilidadesAnuales && (
+                    <div className="flex flex-row overflow-x-auto gap-4 pb-4">
+                      <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white min-w-[200px] flex-shrink-0">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium opacity-90">Recaudación Anual</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold">${utilidadesAnuales.recaudacion_anual.toLocaleString()}</div>
+                          <p className="text-xs opacity-75 mt-1">{utilidadesAnuales.total_pagos} pagos realizados</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white min-w-[200px] flex-shrink-0">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium opacity-90">Gastos Anuales</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold">${utilidadesAnuales.gastos_anuales.toLocaleString()}</div>
+                          <p className="text-xs opacity-75 mt-1">{utilidadesAnuales.total_gastos} gastos registrados</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white min-w-[200px] flex-shrink-0">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium opacity-90">Utilidad Anual</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold">${utilidadesAnuales.utilidad_anual.toLocaleString()}</div>
+                          <p className="text-xs opacity-75 mt-1">{utilidadesAnuales.porcentaje_utilidad.toFixed(1)}% de margen</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
+
+                  {/* Estado de carga para utilidades */}
+                  {!utilidadesAnuales && (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="h-8 w-8 animate-spin mr-2" />
+                      <span>Cargando utilidades anuales...</span>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -1104,6 +1126,95 @@ export default function ReportesPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {/* Filtros de fecha para pagos */}
+                  <div className="flex flex-wrap gap-4 mb-4">
+                    <div className="flex-1 max-w-xs">
+                      <label className="text-sm font-medium">Año</label>
+                      <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar año" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {generateYears().map((year) => (
+                            <SelectItem key={year} value={year.toString()}>
+                              {year}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex-1 max-w-xs">
+                      <label className="text-sm font-medium">Mes</label>
+                      <Select value={pagosMes.toString()} onValueChange={(value) => setPagosMes(parseInt(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar mes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">Enero</SelectItem>
+                          <SelectItem value="2">Febrero</SelectItem>
+                          <SelectItem value="3">Marzo</SelectItem>
+                          <SelectItem value="4">Abril</SelectItem>
+                          <SelectItem value="5">Mayo</SelectItem>
+                          <SelectItem value="6">Junio</SelectItem>
+                          <SelectItem value="7">Julio</SelectItem>
+                          <SelectItem value="8">Agosto</SelectItem>
+                          <SelectItem value="9">Septiembre</SelectItem>
+                          <SelectItem value="10">Octubre</SelectItem>
+                          <SelectItem value="11">Noviembre</SelectItem>
+                          <SelectItem value="12">Diciembre</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button onClick={() => fetchPagosData()} className="flex items-center gap-2">
+                        <RefreshCw className="h-4 w-4" /> Actualizar
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Resumen de Pagos */}
+                  {pagosData.length > 0 && (
+                    <div className="flex flex-row overflow-x-auto gap-4 pb-4 mb-4">
+                      <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white min-w-[200px] flex-shrink-0">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium opacity-90">Total Pagos</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold">{pagosData.length}</div>
+                          <p className="text-xs opacity-75 mt-1">registros en {selectedYear}</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white min-w-[200px] flex-shrink-0">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium opacity-90">Monto Total</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold">${pagosData.reduce((sum, pago) => sum + pago.monto, 0).toLocaleString()}</div>
+                          <p className="text-xs opacity-75 mt-1">valor total</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white min-w-[200px] flex-shrink-0">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium opacity-90">Promedio</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold">${(pagosData.reduce((sum, pago) => sum + pago.monto, 0) / pagosData.length).toFixed(0)}</div>
+                          <p className="text-xs opacity-75 mt-1">por pago</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white min-w-[200px] flex-shrink-0">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium opacity-90">Comprobantes Enviados</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold">{pagosData.filter(p => p.comprobante_enviado).length}</div>
+                          <p className="text-xs opacity-75 mt-1">de {pagosData.length} total</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
+
+                  {/* Filtros de búsqueda */}
                   <div className="flex flex-wrap gap-4 mb-4">
                     <Input
                       placeholder="Buscar por cliente, cédula, comprobante, concepto..."
@@ -1130,10 +1241,19 @@ export default function ReportesPage() {
                         <SelectItem value="fallido">Fallido</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button onClick={exportarPagosCSV} disabled={pagosFiltrados.length === 0} className="flex items-center gap-2">
+                    <Button onClick={() => {}} disabled={pagosFiltrados.length === 0} className="flex items-center gap-2">
                       <Download className="h-4 w-4" /> Exportar CSV
                     </Button>
                   </div>
+
+                  {/* Estado de carga para pagos */}
+                  {pagosData.length === 0 && !isLoading && (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="h-8 w-8 animate-spin mr-2" />
+                      <span>Cargando pagos...</span>
+                    </div>
+                  )}
+
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -1160,7 +1280,7 @@ export default function ReportesPage() {
                               <input type="checkbox" checked={selectedPagos.includes(p.id)} onChange={() => togglePago(p.id)} disabled={p.comprobante_enviado} />
                             </TableCell>
                             <TableCell>{p.numero_comprobante}</TableCell>
-                            <TableCell>{p.fecha_pago}</TableCell>
+                            <TableCell>{new Date(p.fecha_pago).toLocaleDateString('es-ES')}</TableCell>
                             <TableCell>{p.cliente_nombre}</TableCell>
                             <TableCell>{p.cliente_cedula}</TableCell>
                             <TableCell>{p.tipo_plan}</TableCell>
@@ -1177,17 +1297,15 @@ export default function ReportesPage() {
                       </TableBody>
                     </Table>
                   </div>
-                  <Pagination className="mt-4">
-                    <PaginationContent>
-                      <PaginationPrevious onClick={() => setPagosPage(p => Math.max(1, p-1))} />
-                      {[...Array(pagosTotalPages)].map((_, i) => (
-                        <PaginationItem key={i}>
-                          <PaginationLink isActive={pagosPage === i+1} onClick={() => setPagosPage(i+1)}>{i+1}</PaginationLink>
-                        </PaginationItem>
-                      ))}
-                      <PaginationNext onClick={() => setPagosPage(p => Math.min(pagosTotalPages, p+1))} />
-                    </PaginationContent>
-                  </Pagination>
+                  <Pagination
+                    currentPage={pagosPage}
+                    totalPages={pagosTotalPages}
+                    totalCount={pagosData.length}
+                    pageSize={pagosPageSize}
+                    onPageChange={setPagosPage}
+                    showPageSizeSelector={true}
+                    onPageSizeChange={setPagosPageSize}
+                  />
                   {canShowEnviarComprobantes && (
                     <Button
                       onClick={enviarComprobantesMasivos}
@@ -1215,123 +1333,9 @@ export default function ReportesPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {/* Filtros de fecha para gastos */}
                   <div className="flex flex-wrap gap-4 mb-4">
-                    <Input
-                      placeholder="Buscar por descripción, categoría, proveedor, responsable..."
-                      value={gastosSearch}
-                      onChange={e => { setGastosSearch(e.target.value); setGastosPage(1) }}
-                      className="max-w-xs"
-                    />
-                    <Select value={gastosCategoria} onValueChange={v => { setGastosCategoria(v); setGastosPage(1) }}>
-                      <SelectTrigger className="w-40"><SelectValue placeholder="Categoría" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todas">Todas las categorías</SelectItem>
-                        {categoriasGasto.map(cat => (
-                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button onClick={exportarGastosCSV} disabled={gastosFiltrados.length === 0} className="flex items-center gap-2">
-                      <Download className="h-4 w-4" /> Exportar CSV
-                    </Button>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Descripción</TableHead>
-                          <TableHead>Categoría</TableHead>
-                          <TableHead>Monto</TableHead>
-                          <TableHead>Proveedor</TableHead>
-                          <TableHead>Método</TableHead>
-                          <TableHead>Responsable</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {gastosPageData.map((g, i) => (
-                          <TableRow key={g.id + '-' + i}>
-                            <TableCell>{g.fecha_gasto}</TableCell>
-                            <TableCell>{g.descripcion}</TableCell>
-                            <TableCell>{g.categoria}</TableCell>
-                            <TableCell>${g.monto.toFixed(2)}</TableCell>
-                            <TableCell>{g.proveedor}</TableCell>
-                            <TableCell>{g.metodo_pago}</TableCell>
-                            <TableCell>{g.usuario_nombre}</TableCell>
-                          </TableRow>
-                        ))}
-                        {gastosPageData.length === 0 && (
-                          <TableRow><TableCell colSpan={7} className="text-center">No hay gastos para mostrar</TableCell></TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <Pagination className="mt-4">
-                    <PaginationContent>
-                      <PaginationPrevious onClick={() => setGastosPage(p => Math.max(1, p-1))} />
-                      {[...Array(gastosTotalPages)].map((_, i) => (
-                        <PaginationItem key={i}>
-                          <PaginationLink isActive={gastosPage === i+1} onClick={() => setGastosPage(i+1)}>{i+1}</PaginationLink>
-                        </PaginationItem>
-                      ))}
-                      <PaginationNext onClick={() => setGastosPage(p => Math.min(gastosTotalPages, p+1))} />
-                    </PaginationContent>
-                  </Pagination>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Tab Configuración */}
-            <TabsContent value="configuracion" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Settings className="h-5 w-5" />
-                    Configuración de Reportes
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="font-medium mb-2">Información del Sistema</h3>
-                      <p className="text-sm text-gray-600">
-                        El sistema de reportes está configurado para mostrar datos filtrados por año.
-                        Todos los reportes de clientes utilizan el filtro de año seleccionado.
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Tab Dashboard Financiero Mensual */}
-            <TabsContent value="dashboard-financiero" className="space-y-6">
-              {/* Filtros */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Filter className="h-5 w-5" />
-                    Filtros de Reporte Financiero
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div>
-                      <label className="text-sm font-medium">Mes</label>
-                      <Select value={selectedMonth.toString()} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar mes" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {months.map((month) => (
-                            <SelectItem key={month.value} value={month.value.toString()}>
-                              {month.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
+                    <div className="flex-1 max-w-xs">
                       <label className="text-sm font-medium">Año</label>
                       <Select value={selectedYear.toString()} onValueChange={(value) => setSelectedYear(parseInt(value))}>
                         <SelectTrigger>
@@ -1346,76 +1350,144 @@ export default function ReportesPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="flex items-end">
-                      <Button variant="outline" onClick={resetFilters} className="w-full">
-                        Resetear
-                      </Button>
+                    <div className="flex-1 max-w-xs">
+                      <label className="text-sm font-medium">Mes</label>
+                      <Select value={gastosMes.toString()} onValueChange={(value) => setGastosMes(parseInt(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar mes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">Enero</SelectItem>
+                          <SelectItem value="2">Febrero</SelectItem>
+                          <SelectItem value="3">Marzo</SelectItem>
+                          <SelectItem value="4">Abril</SelectItem>
+                          <SelectItem value="5">Mayo</SelectItem>
+                          <SelectItem value="6">Junio</SelectItem>
+                          <SelectItem value="7">Julio</SelectItem>
+                          <SelectItem value="8">Agosto</SelectItem>
+                          <SelectItem value="9">Septiembre</SelectItem>
+                          <SelectItem value="10">Octubre</SelectItem>
+                          <SelectItem value="11">Noviembre</SelectItem>
+                          <SelectItem value="12">Diciembre</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="flex items-end">
-                      <Button onClick={exportarReporte} className="w-full flex items-center gap-2">
-                        <Download className="h-4 w-4" /> Exportar CSV
+                      <Button onClick={() => fetchGastosData()} className="flex items-center gap-2">
+                        <RefreshCw className="h-4 w-4" /> Actualizar
                       </Button>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-              {/* Tarjetas KPI */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                      <TrendingUp className="h-4 w-4 mr-2" />
-                      Ingresos Totales
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold">
-                      ${(reporteData.reporteFinanciero?.ingresos || 0).toLocaleString()}
+
+                  {/* Resumen de Gastos */}
+                  {gastosData.length > 0 && (
+                    <div className="flex flex-row overflow-x-auto gap-4 pb-4 mb-4">
+                      <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white min-w-[200px] flex-shrink-0">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium opacity-90">Total Gastos</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold">{gastosData.length}</div>
+                          <p className="text-xs opacity-75 mt-1">registros en {selectedYear}</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white min-w-[200px] flex-shrink-0">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium opacity-90">Monto Total</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold">${gastosData.reduce((sum, gasto) => sum + gasto.monto, 0).toLocaleString()}</div>
+                          <p className="text-xs opacity-75 mt-1">valor total</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white min-w-[200px] flex-shrink-0">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium opacity-90">Promedio</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="text-3xl font-bold">${(gastosData.reduce((sum, gasto) => sum + gasto.monto, 0) / gastosData.length).toFixed(0)}</div>
+                          <p className="text-xs opacity-75 mt-1">por gasto</p>
+                        </CardContent>
+                      </Card>
                     </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                      <TrendingDown className="h-4 w-4 mr-2" />
-                      Gastos Totales
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold">
-                      ${(reporteData.reporteFinanciero?.gastos || 0).toLocaleString()}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium opacity-90 flex items-center">
-                      <DollarSign className="h-4 w-4 mr-2" />
-                      Utilidad Neta
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold">
-                      ${(reporteData.reporteFinanciero?.utilidad || 0).toLocaleString()}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-              {/* Gráfico de barras */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Comparativo Mensual</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={datosFinancieros}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Monto']} />
-                      <Bar dataKey="monto" fill="#3b82f6" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  )}
+
+                  {/* Filtros de búsqueda */}
+                  <div className="flex flex-wrap gap-4 mb-4">
+                    <Input
+                      placeholder="Buscar por descripción, proveedor, categoría..."
+                      value={gastosSearch}
+                      onChange={e => { setGastosSearch(e.target.value); setGastosPage(1) }}
+                      className="max-w-xs"
+                    />
+                    <Select value={gastosCategoria} onValueChange={v => { setGastosCategoria(v); setGastosPage(1) }}>
+                      <SelectTrigger className="w-40"><SelectValue placeholder="Categoría" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todas las categorías</SelectItem>
+                        <SelectItem value="Transporte">Transporte</SelectItem>
+                        <SelectItem value="Proveedores">Proveedores</SelectItem>
+                        <SelectItem value="Servicios">Servicios</SelectItem>
+                        <SelectItem value="Otros">Otros</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button onClick={() => {}} disabled={gastosData.length === 0} className="flex items-center gap-2">
+                      <Download className="h-4 w-4" /> Exportar CSV
+                    </Button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>ID</TableHead>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Descripción</TableHead>
+                          <TableHead>Categoría</TableHead>
+                          <TableHead>Proveedor</TableHead>
+                          <TableHead>Método de Pago</TableHead>
+                          <TableHead>Monto</TableHead>
+                          <TableHead>Usuario</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {gastosData
+                          .filter(gasto => {
+                            const matchesSearch = !gastosSearch || 
+                              gasto.descripcion.toLowerCase().includes(gastosSearch.toLowerCase()) ||
+                              gasto.proveedor.toLowerCase().includes(gastosSearch.toLowerCase()) ||
+                              gasto.categoria.toLowerCase().includes(gastosSearch.toLowerCase())
+                            
+                            const matchesCategoria = gastosCategoria === "todos" || gasto.categoria === gastosCategoria
+                            
+                            return matchesSearch && matchesCategoria
+                          })
+                          .slice((gastosPage - 1) * gastosPageSize, gastosPage * gastosPageSize)
+                          .map((gasto) => (
+                            <TableRow key={gasto.id}>
+                              <TableCell>{gasto.id}</TableCell>
+                              <TableCell>{new Date(gasto.fecha_gasto).toLocaleDateString('es-ES')}</TableCell>
+                              <TableCell>{gasto.descripcion}</TableCell>
+                              <TableCell>{gasto.categoria}</TableCell>
+                              <TableCell>{gasto.proveedor}</TableCell>
+                              <TableCell>{gasto.metodo_pago}</TableCell>
+                              <TableCell>${gasto.monto.toFixed(2)}</TableCell>
+                              <TableCell>{gasto.usuario_nombre}</TableCell>
+                            </TableRow>
+                          ))}
+                        {gastosData.length === 0 && (
+                          <TableRow><TableCell colSpan={8} className="text-center">No hay gastos para mostrar</TableCell></TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <Pagination
+                    currentPage={gastosPage}
+                    totalPages={Math.ceil(gastosData.length / gastosPageSize)}
+                    totalCount={gastosData.length}
+                    pageSize={gastosPageSize}
+                    onPageChange={setGastosPage}
+                    showPageSizeSelector={true}
+                    onPageSizeChange={setGastosPageSize}
+                  />
                 </CardContent>
               </Card>
             </TabsContent>

@@ -19,7 +19,7 @@ export default function ResetPasswordPage() {
     e.preventDefault()
     setLoading(true)
     try {
-      const res = await fetch("/api/auth/reset", {
+      const res = await fetch("http://localhost:8000/api/auth/reset/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, newPassword }),

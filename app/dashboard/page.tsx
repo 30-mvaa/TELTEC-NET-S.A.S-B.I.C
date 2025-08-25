@@ -3,12 +3,13 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { getCurrentUser, logoutUser } from "@/lib/config/api"
 
 interface User {
-  id: number
+  id: string | null
   email: string
-  role: string
-  name: string
+  rol: string | null
+  nombre: string | null
 }
 
 interface DashboardStats {
@@ -37,27 +38,22 @@ export default function Dashboard() {
   const router = useRouter()
 
   useEffect(() => {
-    const userData = localStorage.getItem("user")
-    if (!userData) {
+    const currentUser = getCurrentUser()
+    if (!currentUser) {
       router.push("/")
       return
     }
-    const parsed = JSON.parse(userData)
-    // Asegura que el campo sea siempre 'role', sin dañar otras propiedades
-    setUser({
-      ...parsed,
-      role: parsed.role || parsed.rol,
-    })
+    setUser(currentUser)
   }, [router])
 
   const handleLogout = () => {
-    localStorage.removeItem("user")
+    logoutUser()
     router.push("/")
   }
 
   if (!user) return null
 
-  const getModulesByRole = (role: string) => {
+  const getModulesByRole = (rol: string | null) => {
     const baseModules = [
       {
         name: "Clientes",
@@ -77,7 +73,7 @@ export default function Dashboard() {
       },
     ]
 
-    switch (role) {
+    switch (rol || "") {
       case "administrador":
         return [
           ...baseModules,
@@ -183,7 +179,7 @@ export default function Dashboard() {
     }
   }
 
-  const modules = getModulesByRole(user.role)
+  const modules = getModulesByRole(user.rol)
 
   const headerStyle: React.CSSProperties = {
     background: "rgba(255, 255, 255, 0.8)",
@@ -285,9 +281,9 @@ export default function Dashboard() {
                 </div>
               </button>
               <div style={{ textAlign: "right" }}>
-                <p style={{ fontSize: "0.875rem", fontWeight: "500", color: "#0f172a" }}>{user.name}</p>
+                <p style={{ fontSize: "0.875rem", fontWeight: "500", color: "#0f172a" }}>{user.nombre || "Usuario"}</p>
                 <p style={{ fontSize: "0.75rem", color: "#64748b", textTransform: "capitalize" }}>
-                  {user.role.replace("_", " ")}
+                  {(user.rol || "").replace("_", " ")}
                 </p>
               </div>
               <button
@@ -326,7 +322,7 @@ export default function Dashboard() {
                 backgroundClip: "text",
               }}
             >
-              {user.name}
+              {user.nombre || "Usuario"}
             </span>
           </h2>
           <p style={{ color: "#64748b", fontSize: "1.125rem" }}>
@@ -339,7 +335,7 @@ export default function Dashboard() {
             })}
           </p>
           {/* Botón de configuración solo para administradores, debajo de bienvenida y a la derecha */}
-          {user.role === "administrador" && (
+          {user.rol === "administrador" && (
                     <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "2rem" }}>
                       <button
                         onClick={() => router.push("/configuracion")}
