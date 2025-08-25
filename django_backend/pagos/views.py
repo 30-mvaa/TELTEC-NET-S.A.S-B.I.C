@@ -426,8 +426,13 @@ def get_meses_disponibles_cliente(request, cliente_id):
 def generar_comprobante_pdf(pago_data, cliente_data):
     """Generar comprobante de pago en PDF usando WeasyPrint"""
     try:
-        from weasyprint import HTML, CSS
-        from weasyprint.text.fonts import FontConfiguration
+        # Importación condicional para evitar errores de linter
+        try:
+            from weasyprint import HTML, CSS
+            from weasyprint.text.fonts import FontConfiguration
+        except ImportError:
+            # Si no está disponible, retornar None
+            return None
         
         # Crear HTML del comprobante
         html_content = f"""

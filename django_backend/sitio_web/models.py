@@ -31,6 +31,8 @@ class Servicio(models.Model):
     """Modelo para servicios ofrecidos"""
     nombre = models.CharField(max_length=200)
     descripcion = models.TextField()
+    icono = models.CharField(max_length=50, blank=True, null=True)
+    imagen = models.URLField(blank=True, null=True)
     activo = models.BooleanField(default=True)
     orden = models.IntegerField(default=0)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
@@ -40,6 +42,64 @@ class Servicio(models.Model):
         verbose_name = "Servicio"
         verbose_name_plural = "Servicios"
         ordering = ['orden', 'nombre']
+
+class Plan(models.Model):
+    """Modelo para planes de internet"""
+    nombre = models.CharField(max_length=200)
+    velocidad = models.CharField(max_length=100)
+    precio = models.DecimalField(max_digits=10, decimal_places=2)
+    descripcion = models.TextField()
+    caracteristicas = models.JSONField(default=list)  # Lista de características
+    popular = models.BooleanField(default=False)
+    activo = models.BooleanField(default=True)
+    orden = models.IntegerField(default=0)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Plan"
+        verbose_name_plural = "Planes"
+        ordering = ['orden', 'precio']
+
+class Cobertura(models.Model):
+    """Modelo para zonas de cobertura"""
+    zona = models.CharField(max_length=200)
+    descripcion = models.TextField()
+    coordenadas = models.JSONField(default=dict)  # Para mapa
+    activo = models.BooleanField(default=True)
+    orden = models.IntegerField(default=0)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Cobertura"
+        verbose_name_plural = "Coberturas"
+        ordering = ['orden', 'zona']
+
+class Contacto(models.Model):
+    """Modelo para información de contacto"""
+    TIPO_CHOICES = [
+        ('telefono', 'Teléfono'),
+        ('email', 'Email'),
+        ('whatsapp', 'WhatsApp'),
+        ('direccion', 'Dirección'),
+        ('horario', 'Horario'),
+    ]
+    
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    titulo = models.CharField(max_length=100)
+    valor = models.CharField(max_length=300)
+    icono = models.CharField(max_length=50, blank=True, null=True)
+    url = models.URLField(blank=True, null=True)
+    activo = models.BooleanField(default=True)
+    orden = models.IntegerField(default=0)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Contacto"
+        verbose_name_plural = "Contactos"
+        ordering = ['orden', 'tipo']
 
 class RedSocial(models.Model):
     """Modelo para redes sociales"""
@@ -52,15 +112,35 @@ class RedSocial(models.Model):
         ('tiktok', 'TikTok'),
     ]
     
-    tipo = models.CharField(max_length=20, choices=REDES_CHOICES)
+    nombre = models.CharField(max_length=100, blank=True, null=True)
     url = models.URLField()
+    icono = models.CharField(max_length=50, blank=True, null=True)
     activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
     fecha_actualizacion = models.DateTimeField(auto_now=True)
+    tipo = models.CharField(max_length=20, choices=REDES_CHOICES)
     
     class Meta:
         verbose_name = "Red Social"
         verbose_name_plural = "Redes Sociales"
         unique_together = ['tipo']
+
+class Carrusel(models.Model):
+    """Modelo para imágenes del carrusel"""
+    titulo = models.CharField(max_length=200)
+    descripcion = models.TextField(blank=True, null=True)
+    imagen = models.URLField()
+    video = models.URLField(blank=True, null=True)
+    enlace = models.URLField(blank=True, null=True)
+    activo = models.BooleanField(default=True)
+    orden = models.IntegerField(default=0)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Carrusel"
+        verbose_name_plural = "Carrusel"
+        ordering = ['orden', 'titulo']
 
 class ConfiguracionSitio(models.Model):
     """Modelo para configuración general del sitio"""
@@ -74,3 +154,29 @@ class ConfiguracionSitio(models.Model):
     class Meta:
         verbose_name = "Configuración del Sitio"
         verbose_name_plural = "Configuración del Sitio"
+
+class Header(models.Model):
+    """Modelo para configuración del header"""
+    logo_url = models.URLField(blank=True, null=True)
+    logo_alt = models.CharField(max_length=200, default="TelTec Net Logo")
+    mostrar_menu = models.BooleanField(default=True)
+    color_fondo = models.CharField(max_length=7, default="#ffffff")
+    color_texto = models.CharField(max_length=7, default="#000000")
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Header"
+        verbose_name_plural = "Header"
+
+class Footer(models.Model):
+    """Modelo para configuración del footer"""
+    texto_copyright = models.CharField(max_length=300, default="© 2025 T&T net - Todos los derechos reservados")
+    mostrar_redes_sociales = models.BooleanField(default=True)
+    mostrar_contacto = models.BooleanField(default=True)
+    color_fondo = models.CharField(max_length=7, default="#1f2937")
+    color_texto = models.CharField(max_length=7, default="#ffffff")
+    fecha_actualizacion = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Footer"
+        verbose_name_plural = "Footer"

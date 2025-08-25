@@ -117,6 +117,14 @@ export default function Dashboard() {
             stats: `${stats.notificacionesPendientes} pendientes`,
             icon: "💬",
           },
+          {
+            name: "Sitio Web",
+            href: "/sitio-web",
+            description: "Gestión del sitio web público",
+            color: "linear-gradient(135deg, #06b6d4, #3b82f6)",
+            stats: "Contenido dinámico",
+            icon: "🌐",
+          },
         ]
       case "economia":
         return [
