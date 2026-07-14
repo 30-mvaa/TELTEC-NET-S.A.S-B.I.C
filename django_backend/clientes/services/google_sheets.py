@@ -128,7 +128,11 @@ def sync_sheets_to_db():
 
     headers = [h.strip() for h in all_values[0]]
     created = 0
+    updated = 0
+    deleted = 0
     errors = []
+
+    sheet_cedulas = set()
 
     for row_idx, row in enumerate(all_values[1:], start=2):
         data = _row_to_cliente_data(row, headers)
@@ -141,35 +145,82 @@ def sync_sheets_to_db():
             errors.append(f"Row {row_idx}: invalid cedula '{cedula}'")
             continue
 
+        sheet_cedulas.add(cedula)
+
         with connection.cursor() as cursor:
             cursor.execute("SELECT id FROM clientes WHERE cedula = %s", [cedula])
-            if cursor.fetchone():
-                continue
+            existing = cursor.fetchone()
 
+            if existing:
+                try:
+                    cursor.execute("""
+                        UPDATE clientes
+                        SET nombres = %s, apellidos = %s, fecha_nacimiento = %s,
+                            direccion = %s, email = %s, telefono = %s,
+                            estado = %s, id_sector = %s
+                        WHERE cedula = %s
+                    """, [
+                        data.get("nombres", ""),
+                        data.get("apellidos", ""),
+                        data.get("fecha_nacimiento") or None,
+                        data.get("direccion", ""),
+                        data.get("email", ""),
+                        data.get("telefono", ""),
+                        data.get("estado", "activo"),
+                        data.get("id_sector") or None,
+                        cedula,
+                    ])
+                    updated += 1
+                except Exception as e:
+                    errors.append(f"Row {row_idx} ({cedula}) update: {e}")
+            else:
+                try:
+                    cursor.execute("""
+                        INSERT INTO clientes
+                            (cedula, nombres, apellidos, fecha_nacimiento, direccion,
+                             email, telefono, estado, fecha_registro, id_sector)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, [
+                        cedula,
+                        data.get("nombres", ""),
+                        data.get("apellidos", ""),
+                        data.get("fecha_nacimiento") or None,
+                        data.get("direccion", ""),
+                        data.get("email", ""),
+                        data.get("telefono", ""),
+                        data.get("estado", "activo"),
+                        datetime.now(),
+                        data.get("id_sector") or None,
+                    ])
+                    created += 1
+                    logger.info(f"Created cliente {cedula} from sheet row {row_idx}")
+                except Exception as e:
+                    errors.append(f"Row {row_idx} ({cedula}) create: {e}")
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT cedula FROM clientes")
+        db_cedulas = {row[0] for row in cursor.fetchall()}
+        to_delete = db_cedulas - sheet_cedulas
+        for cedula in to_delete:
             try:
-                cursor.execute("""
-                    INSERT INTO clientes
-                        (cedula, nombres, apellidos, fecha_nacimiento, direccion,
-                         email, telefono, estado, fecha_registro, id_sector)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, [
-                    cedula,
-                    data.get("nombres", ""),
-                    data.get("apellidos", ""),
-                    data.get("fecha_nacimiento") or None,
-                    data.get("direccion", ""),
-                    data.get("email", ""),
-                    data.get("telefono", ""),
-                    data.get("estado", "activo"),
-                    datetime.now(),
-                    data.get("id_sector") or None,
-                ])
-                created += 1
-                logger.info(f"Created cliente {cedula} from sheet row {row_idx}")
+                cursor.execute("DELETE FROM clientes WHERE cedula = %s", [cedula])
+                deleted += 1
+                logger.info(f"Deleted cliente {cedula} from DB (removed from sheet)")
             except Exception as e:
-                errors.append(f"Row {row_idx} ({cedula}): {e}")
+                errors.append(f"Delete {cedula}: {e}")
 
-    return created, "; ".join(errors[:5]) if errors else ""
+    summary = []
+    if created:
+        summary.append(f"Created {created}")
+    if updated:
+        summary.append(f"Updated {updated}")
+    if deleted:
+        summary.append(f"Deleted {deleted}")
+    msg = "; ".join(summary) if summary else "No changes"
+    err_msg = "; ".join(errors[:5]) if errors else ""
+    if err_msg:
+        msg += f" | Errors: {err_msg}"
+    return (created + updated + deleted), msg
 
 
 def delete_cliente_from_sheets(cedula):

@@ -23,11 +23,9 @@ class Command(BaseCommand):
 
         while True:
             try:
-                created, errors = sync_sheets_to_db()
-                if created:
-                    self.stdout.write(self.style.SUCCESS(f"Synced {created} new clients"))
-                if errors:
-                    self.stdout.write(self.style.WARNING(f"Errors: {errors}"))
+                total, msg = sync_sheets_to_db()
+                if total:
+                    self.stdout.write(self.style.SUCCESS(f"Sync: {msg}"))
             except Exception as e:
                 logger.error(f"Sync error: {e}")
 
