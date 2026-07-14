@@ -14,6 +14,8 @@ from .serializers import (
 from django.utils import timezone
 from datetime import timedelta
 from rest_framework.decorators import api_view, permission_classes
+from clientes.services.google_sheets import sync_cliente_to_sheets, delete_cliente_from_sheets
+from configuracion.models import ConfiguracionSistema
 
 
 class ClienteViewSet(viewsets.ModelViewSet):
@@ -410,6 +412,10 @@ class ClienteViewSet(viewsets.ModelViewSet):
                             'message': f'Error al asignar plan: {str(e)}'
                         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 
+                auto_sync = ConfiguracionSistema.objects.filter(clave='google_sheets_auto_sync', valor='true').exists()
+                if auto_sync:
+                    sync_cliente_to_sheets(cliente)
+
                 return Response({
                     'success': True,
                     'message': 'Cliente creado exitosamente',
@@ -548,6 +554,10 @@ class ClienteViewSet(viewsets.ModelViewSet):
                 
                 # Recargar el cliente desde la base de datos para obtener datos actualizados
                 cliente.refresh_from_db()
+
+                auto_sync = ConfiguracionSistema.objects.filter(clave='google_sheets_auto_sync', valor='true').exists()
+                if auto_sync:
+                    sync_cliente_to_sheets(cliente)
                 
                 return Response({
                     'success': True,
@@ -644,7 +654,11 @@ class ClienteViewSet(viewsets.ModelViewSet):
             
             if cliente_existe or cedula_existe:
                 raise Exception(f"El cliente con ID {cliente_id} y cédula {cedula_cliente} no pudo ser eliminado completamente de la base de datos")
-            
+
+            auto_sync = ConfiguracionSistema.objects.filter(clave='google_sheets_auto_sync', valor='true').exists()
+            if auto_sync:
+                delete_cliente_from_sheets(cedula_cliente)
+
             return Response({
                 'success': True,
                 'message': 'Cliente eliminado exitosamente de la base de datos'
@@ -1260,9 +1274,16 @@ def bulk_import_clientes(request):
             'message': f'Error en la importación: {str(e)}',
             'error_details': traceback.format_exc()
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        import traceback
-        return Response({
-            'success': False,
-            'message': f'Error en la importación: {str(e)}',
-            'error_details': traceback.format_exc()
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def sync_sheets(request):
+    from clientes.services.google_sheets import sync_sheets_to_db
+    created, errors = sync_sheets_to_db()
+    return Response({
+        'success': True,
+        'message': f'Created {created} clients from Google Sheets',
+        'created': created,
+        'errors': errors if errors else None,
+    })

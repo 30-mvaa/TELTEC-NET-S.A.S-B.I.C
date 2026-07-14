@@ -26,7 +26,7 @@ class UsuarioService:
             # Usar conexión de Django directamente para evitar SQL injection
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, email, nombre, rol, activo, password
+                    SELECT id, email, nombre, rol, activo, password_hash
                     FROM usuarios 
                     WHERE email = %s AND activo = true
                 """, [email])
@@ -99,7 +99,7 @@ class UsuarioService:
             # Insertar usuario
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO usuarios (email, nombre, rol, password, activo, date_joined)
+                    INSERT INTO usuarios (email, nombre, rol, password_hash, activo, fecha_creacion)
                     VALUES (%s, %s, %s, %s, true, NOW())
                     RETURNING id
                 """, [email, nombre, rol, password_hash])
@@ -300,7 +300,7 @@ Equipo TelTec Net
             with connection.cursor() as cursor:
                 cursor.execute("""
                     UPDATE usuarios 
-                    SET password = %s, reset_token = NULL, reset_token_expires = NULL
+                    SET password_hash = %s, reset_token = NULL, reset_token_expires = NULL
                     WHERE id = %s
                 """, [password_hash, user_data[0]])
             
@@ -316,9 +316,9 @@ Equipo TelTec Net
         try:
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, email, nombre, rol, activo, date_joined
+                    SELECT id, email, nombre, rol, activo, fecha_creacion
                     FROM usuarios 
-                    ORDER BY date_joined DESC
+                    ORDER BY fecha_creacion DESC
                 """)
                 users = []
                 for row in cursor.fetchall():

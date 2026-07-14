@@ -1,7 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    ClienteViewSet, buscar_cliente_cedula, clientes_por_sector, bulk_import_clientes
+    ClienteViewSet, buscar_cliente_cedula, clientes_por_sector, bulk_import_clientes,
+    sync_sheets
 )
 
 router = DefaultRouter()
@@ -12,6 +13,7 @@ urlpatterns = [
     path('api/clientes/buscar/<str:cedula>/', buscar_cliente_cedula, name='buscar_cliente_cedula'),
     path('api/clientes/sector/<int:id_sector>/', clientes_por_sector, name='clientes_por_sector'),
     path('api/clientes/bulk-import/', bulk_import_clientes, name='bulk_import_clientes'),
+    path('api/clientes/sync-sheets/', sync_sheets, name='sync_sheets'),
     # Router debe estar al final para no interceptar otras URLs
     path('api/', include(router.urls)),
 ] 
