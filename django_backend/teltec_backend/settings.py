@@ -84,13 +84,28 @@ TEMPLATES = [
 WSGI_APPLICATION = 'teltec_backend.wsgi.application'
 
 # Database
-DATABASES = {
-    'default': dj_database_url.config(
-        default=f"postgres://{os.environ.get('DB_USER', 'teltec_user')}:{os.environ.get('DB_PASSWORD', '12345678')}@{os.environ.get('DB_HOST', 'localhost')}:{os.environ.get('DB_PORT', '5432')}/{os.environ.get('DB_NAME', 'teltec_db')}",
-        conn_max_age=600,
-        conn_health_checks=True,
-    )
-}
+# If DATABASE_URL is set (Belmo, Neon, Render, etc.) use it.
+# Otherwise fall back to individual DB_* env vars for local dev.
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DB_NAME', 'teltec_db'),
+            'USER': os.environ.get('DB_USER', 'teltec_user'),
+            'PASSWORD': os.environ.get('DB_PASSWORD', '12345678'),
+            'HOST': os.environ.get('DB_HOST', 'localhost'),
+            'PORT': os.environ.get('DB_PORT', '5432') or '5432',
+        }
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
