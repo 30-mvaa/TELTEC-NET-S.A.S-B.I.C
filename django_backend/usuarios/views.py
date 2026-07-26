@@ -11,6 +11,21 @@ from datetime import datetime, timedelta
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+def reset_password_temp(request):
+    """Temporary endpoint to reset admin password - REMOVE AFTER USE"""
+    import bcrypt
+    from django.db import connection
+    pw = request.data.get('password', 'marco123')
+    email = request.data.get('email', 'vangamarca4@gmail.com')
+    pw_hash = bcrypt.hashpw(pw.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    with connection.cursor() as c:
+        c.execute('UPDATE usuarios SET password_hash = %s WHERE email = %s', [pw_hash, email])
+        rows = c.rowcount
+    return Response({'success': True, 'updated': rows, 'hash': pw_hash[:20]})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def login(request):
     """Login de usuario"""
     email = request.data.get('email')
