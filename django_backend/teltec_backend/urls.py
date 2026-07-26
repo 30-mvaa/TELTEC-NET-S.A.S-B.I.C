@@ -35,7 +35,6 @@ urlpatterns = [
     path('', include('sectores_app.urls')),
     path('', include('planes_app.urls')),
     path('api/auth/', include('usuarios.urls')),
-    path('', include('usuarios.urls')),
     path('', include('chatbot.urls'))
 ]
 
