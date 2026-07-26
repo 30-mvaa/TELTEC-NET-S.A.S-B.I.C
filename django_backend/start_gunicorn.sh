@@ -1,7 +1,5 @@
 #!/bin/bash
 export TMPDIR=/tmp
-export HOME=/tmp
-export XDG_RUNTIME_DIR=/tmp
 
 python manage.py migrate --noinput
 mkdir -p /tmp/staticfiles /tmp/media
