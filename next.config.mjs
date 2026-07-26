@@ -22,7 +22,7 @@ const nextConfig = {
     ],
   },
   async rewrites() {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://teltec-backend--vangamarca4.replit.app';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://teltec-backend-5cfc.onbelmo.uk';
     return [
       {
         source: "/api/:path*/",
