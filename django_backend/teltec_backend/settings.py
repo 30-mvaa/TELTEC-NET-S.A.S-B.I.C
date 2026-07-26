@@ -4,8 +4,8 @@ Django settings for teltec_backend project.
 
 from pathlib import Path
 import os
+from urllib.parse import urlparse, parse_qs
 from dotenv import load_dotenv
-import dj_database_url
 
 # Cargar variables de entorno desde .env.local (si existe)
 load_dotenv('../.env.local', override=True)
@@ -86,19 +86,21 @@ WSGI_APPLICATION = 'teltec_backend.wsgi.application'
 # Database
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 if DATABASE_URL:
-    # Strip unsupported params that dj_database_url can't parse
-    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
     parsed = urlparse(DATABASE_URL)
     params = parse_qs(parsed.query)
-    params.pop('channel_binding', None)
-    clean_query = urlencode(params, doseq=True)
-    clean_url = urlunparse(parsed._replace(query=clean_query))
+    port = parsed.port or 5432
     DATABASES = {
-        'default': dj_database_url.config(
-            default=clean_url,
-            conn_max_age=600,
-            conn_health_checks=True,
-        )
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': parsed.path.lstrip('/') or 'postgres',
+            'USER': parsed.username or '',
+            'PASSWORD': parsed.password or '',
+            'HOST': parsed.hostname or 'localhost',
+            'PORT': str(port),
+            'OPTIONS': {
+                'sslmode': params.get('sslmode', ['require'])[0],
+            },
+        }
     }
 else:
     DATABASES = {
