@@ -3,4 +3,4 @@ nixPkgs = ["python3", "postgresql_16.dev", "gcc"]
 aptPkgs = ["libglib2.0-0", "libpango-1.0-0", "libpangocairo-1.0-0", "libgdk-pixbuf-2.0-0", "libffi-dev", "libcairo2", "libpangoft2-1.0-0", "fonts-noto-cjk"]
 
 [start]
-cmd = "bash start_gunicorn.sh"
+cmd = "python manage.py migrate --noinput && mkdir -p /tmp/staticfiles /tmp/media && python manage.py collectstatic --noinput 2>/dev/null; exec gunicorn teltec_backend.wsgi --bind 0.0.0.0:${PORT:-8000} --workers 3 --timeout 120 --worker-tmp-dir /tmp"
