@@ -85,10 +85,17 @@ WSGI_APPLICATION = 'teltec_backend.wsgi.application'
 
 # Database
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
+import sys
+print(f"[DB DEBUG] DATABASE_URL present: {bool(DATABASE_URL)}", file=sys.stderr)
+print(f"[DB DEBUG] DB_HOST={os.environ.get('DB_HOST', '<unset>')!r}", file=sys.stderr)
+print(f"[DB DEBUG] DB_PORT={os.environ.get('DB_PORT', '<unset>')!r}", file=sys.stderr)
+print(f"[DB DEBUG] DB_NAME={os.environ.get('DB_NAME', '<unset>')!r}", file=sys.stderr)
+
 if DATABASE_URL:
     parsed = urlparse(DATABASE_URL)
     params = parse_qs(parsed.query)
     port = parsed.port or 5432
+    print(f"[DB DEBUG] parsed.hostname={parsed.hostname!r} port={port!r} db={parsed.path!r}", file=sys.stderr)
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -103,6 +110,9 @@ if DATABASE_URL:
         }
     }
 else:
+    db_port_raw = os.environ.get('DB_PORT', '5432')
+    db_port = db_port_raw or '5432'
+    print(f"[DB DEBUG] using DB_* vars, PORT={db_port!r} (raw={db_port_raw!r})", file=sys.stderr)
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -110,9 +120,11 @@ else:
             'USER': os.environ.get('DB_USER', 'teltec_user'),
             'PASSWORD': os.environ.get('DB_PASSWORD', '12345678'),
             'HOST': os.environ.get('DB_HOST', 'localhost'),
-            'PORT': os.environ.get('DB_PORT', '5432') or '5432',
+            'PORT': db_port,
         }
     }
+
+print(f"[DB DEBUG] FINAL DB config: HOST={DATABASES['default']['HOST']!r} PORT={DATABASES['default']['PORT']!r} NAME={DATABASES['default']['NAME']!r}", file=sys.stderr)
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
