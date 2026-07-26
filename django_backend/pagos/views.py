@@ -112,6 +112,13 @@ def delete_pago(request, pago_id):
             # Eliminar el pago
             cursor.execute("DELETE FROM pagos WHERE id = %s", [pago_id])
             
+            # Sync to Google Sheets cobros
+            try:
+                from pagos.services.google_sheets import delete_pago_from_sheets
+                delete_pago_from_sheets(pago_id)
+            except Exception as e:
+                print(f"Warning: Could not delete from cobros sheet: {e}")
+            
             # Actualizar deudas automáticamente después de eliminar el pago
             actualizar_deudas_automaticamente(cursor, pago[1])  # pago[1] es el cliente_id
             
@@ -384,7 +391,15 @@ def _create_pago_logic(request):
         
         # Invalidar caché de estadísticas después de crear pagos
         invalidate_deudas_cache()
-        
+
+        # Sync to Google Sheets cobros
+        try:
+            from pagos.services.google_sheets import sync_pago_to_sheets
+            for pago_creado in pagos_creados:
+                sync_pago_to_sheets(pago_creado['id'], cliente_id)
+        except Exception as e:
+            print(f"Warning: Could not sync to cobros sheet: {e}")
+
         # Log para indicar que se registró un pago
         print(f"✅ Pago registrado para cliente {cliente_id} - Monto: ${monto}")
         
@@ -2393,6 +2408,14 @@ def bulk_import_pagos(request):
                     'error': str(e)
                 })
         
+        # Sync imported payments to Google Sheets cobros
+        try:
+            from pagos.services.google_sheets import sync_pago_to_sheets
+            for creado in resultados['creados']:
+                sync_pago_to_sheets(creado['id'])
+        except Exception as e:
+            print(f"Warning: Could not sync imported pagos to cobros sheet: {e}")
+
         return Response({
             'success': len(resultados['creados']) > 0,
             'message': f'Se importaron {len(resultados["creados"])} pagos',
