@@ -1,6 +1,9 @@
 [phases.setup]
 nixPkgs = ["python3", "postgresql_16.dev", "gcc"]
-aptPkgs = ["libffi-dev", "libcairo2", "fonts-noto-cjk"]
+aptPkgs = ["libffi-dev"]
+
+[phases.install]
+cmds = ["pip install --no-cache-dir -r requirements.txt"]
 
 [start]
 cmd = "python manage.py migrate --noinput && mkdir -p /tmp/staticfiles /tmp/media && python manage.py collectstatic --noinput 2>/dev/null; exec gunicorn teltec_backend.wsgi --bind 0.0.0.0:${PORT:-8000} --workers 3 --timeout 120 --worker-tmp-dir /tmp"
