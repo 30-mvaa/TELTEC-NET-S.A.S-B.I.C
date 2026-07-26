@@ -34,7 +34,7 @@ urlpatterns = [
     path('', include('configuracion.urls')),
     path('', include('sectores_app.urls')),
     path('', include('planes_app.urls')),
-    path('api/auth/', include('usuarios.urls')),
+    path('', include('usuarios.urls')),
     path('', include('chatbot.urls'))
 ]
 
