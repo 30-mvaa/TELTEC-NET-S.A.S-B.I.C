@@ -22,68 +22,7 @@ from io import BytesIO
 from .cache_utils import get_cached_stats, set_cached_stats, get_deudas_stats_cache_key, get_pagos_stats_cache_key, invalidate_deudas_cache
 from .reportes import ReporteGenerator
 
-# Importaciones opcionales para generación de PDFs
-WEASYPRINT_AVAILABLE = False
-HTML = None
-CSS = None
-FontConfiguration = None
-
-def _check_weasyprint():
-    """Verificar si WeasyPrint está disponible y configurar variables de entorno si es necesario"""
-    global WEASYPRINT_AVAILABLE, HTML, CSS, FontConfiguration
-    
-    # Si ya está disponible, no hacer nada
-    if WEASYPRINT_AVAILABLE and HTML is not None:
-        return True
-    
-    # Configurar variables de entorno para macOS si es necesario
-    import sys
-    import os
-    if sys.platform == 'darwin':  # macOS
-        homebrew_prefix = '/opt/homebrew'
-        if os.path.exists(homebrew_prefix):
-            # Forzar actualización de variables de entorno (no solo setdefault)
-            current_pkg_config = os.environ.get('PKG_CONFIG_PATH', '')
-            if homebrew_prefix not in current_pkg_config:
-                os.environ['PKG_CONFIG_PATH'] = f'{homebrew_prefix}/lib/pkgconfig:{current_pkg_config}'
-            
-            current_dyld = os.environ.get('DYLD_LIBRARY_PATH', '')
-            if homebrew_prefix not in current_dyld:
-                os.environ['DYLD_LIBRARY_PATH'] = f'{homebrew_prefix}/lib:{current_dyld}' if current_dyld else f'{homebrew_prefix}/lib'
-            
-            current_path = os.environ.get('PATH', '')
-            if f'{homebrew_prefix}/bin' not in current_path:
-                os.environ['PATH'] = f'{homebrew_prefix}/bin:{current_path}'
-    
-    try:
-        # type: ignore[reportMissingImports] - WeasyPrint es una dependencia opcional
-        from weasyprint import HTML as HTML_Module, CSS as CSS_Module  # type: ignore[reportMissingImports]
-        from weasyprint.text.fonts import FontConfiguration as FontConfig_Module  # type: ignore[reportMissingImports]
-        
-        # Actualizar las variables globales
-        WEASYPRINT_AVAILABLE = True
-        HTML = HTML_Module
-        CSS = CSS_Module
-        FontConfiguration = FontConfig_Module
-        print("✅ WeasyPrint está disponible y funcionando")
-        return True
-    except ImportError as e:
-        WEASYPRINT_AVAILABLE = False
-        print(f"⚠️ WeasyPrint no está disponible (ImportError): {str(e)}")
-        print("   Para instalar: pip install weasyprint")
-        print("   En macOS también necesitas: brew install cairo pango gdk-pixbuf gobject-introspection")
-        import traceback
-        traceback.print_exc()
-        return False
-    except Exception as e:
-        WEASYPRINT_AVAILABLE = False
-        print(f"⚠️ Error al importar WeasyPrint: {str(e)}")
-        print("   Verifica que las dependencias del sistema estén instaladas.")
-        import traceback
-        traceback.print_exc()
-        return False
-
-# WeasyPrint se carga bajo demanda cuando se necesita generar PDF
+# PDF generation uses xhtml2pdf (pure Python, no system deps needed)
 
 # Create your views here.
 
@@ -703,7 +642,7 @@ def get_meses_disponibles_cliente(request, cliente_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def generar_comprobante_pdf(pago_data, cliente_data, empresa_data=None):
-    """Generar comprobante de pago en PDF usando WeasyPrint"""
+    """Generar comprobante de pago en PDF usando xhtml2pdf"""
     if empresa_data is None:
         empresa_data = {
             'nombre': 'TELTEC NET',
@@ -712,177 +651,144 @@ def generar_comprobante_pdf(pago_data, cliente_data, empresa_data=None):
             'email': 'teltecnet@outlook.com',
             'ruc': '1234567890001'
         }
-    
-    # Formatear estado del pago
+
     estado_display = {
         'completado': 'COMPLETADO',
         'pendiente': 'PENDIENTE',
         'fallido': 'FALLIDO'
     }.get(pago_data.get('estado', 'completado'), 'COMPLETADO')
-    
-    # Formatear método de pago
+
     metodo_display = {
         'efectivo': 'Efectivo',
         'transferencia': 'Transferencia Bancaria',
-        'deposito': 'Depósito',
-        'tarjeta': 'Tarjeta de Crédito/Débito',
-        'pago_online': 'Pago en Línea'
+        'deposito': 'Deposito',
+        'tarjeta': 'Tarjeta de Credito/Debito',
+        'pago_online': 'Pago en Linea'
     }.get(pago_data.get('metodo_pago', ''), pago_data.get('metodo_pago', '').title())
-    
+
     from django.utils import timezone
     fecha_generacion = timezone.now().strftime('%d/%m/%Y %H:%M:%S')
-    
-    # Crear HTML del comprobante compacto (una sola hoja A4)
+
     html_content = f"""
     <!DOCTYPE html>
     <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Comprobante de Pago - {pago_data['numero_comprobante']}</title>
-        <style>
-            @page {{ size: A4; margin: 10mm; }}
-            body {{ font-family: 'Helvetica', 'Arial', sans-serif; margin: 0; padding: 0; font-size: 11px; }}
-            .comprobante {{ max-width: 190mm; margin: 0 auto; padding: 10px; }}
-            .header {{ display: flex; justify-content: space-between; border-bottom: 3px solid #1a73e8; padding-bottom: 10px; margin-bottom: 15px; }}
-            .company-title {{ font-size: 20px; font-weight: bold; color: #1a73e8; margin: 0; }}
-            .company-ruc {{ font-size: 10px; color: #666; margin: 2px 0 0 0; }}
-            .company-details {{ font-size: 9px; color: #888; margin-top: 4px; }}
-            .doc-info {{ text-align: right; padding: 8px 12px; background: #f0f4f8; border-radius: 4px; }}
-            .doc-type {{ font-size: 14px; font-weight: bold; color: #1a73e8; margin: 0; }}
-            .doc-number {{ font-size: 12px; color: #333; font-family: monospace; }}
-            .status-badge {{ display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 9px; font-weight: bold; margin-top: 4px; background: #28a745; color: white; }}
-            .main-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }}
-            .section {{ background: #f8f9fa; padding: 10px; border-radius: 4px; }}
-            .section-title {{ font-size: 11px; font-weight: bold; color: #1a73e8; margin: 0 0 8px 0; padding-bottom: 4px; border-bottom: 1px solid #e0e0e0; }}
-            .info-row {{ display: flex; justify-content: space-between; margin-bottom: 4px; }}
-            .info-label {{ font-weight: bold; color: #555; }}
-            .info-value {{ color: #333; }}
-            .amount-box {{ background: linear-gradient(135deg, #1a73e8, #1557b0); color: white; padding: 15px; border-radius: 6px; text-align: center; margin: 15px 0; }}
-            .amount-label {{ font-size: 11px; opacity: 0.9; }}
-            .amount-value {{ font-size: 28px; font-weight: bold; margin: 5px 0; }}
-            .amount-concept {{ font-size: 10px; opacity: 0.8; }}
-            .barcode {{ font-family: monospace; font-size: 9px; text-align: center; color: #666; margin: 10px 0; }}
-            .footer {{ margin-top: 15px; padding-top: 10px; border-top: 1px solid #e0e0e0; }}
-            .footer-message {{ background: #e8f5e9; border: 1px solid #c8e6c9; padding: 8px; border-radius: 4px; text-align: center; margin-bottom: 10px; }}
-            .footer-message p {{ margin: 0; color: #2e7d32; font-size: 10px; }}
-            .signatures {{ display: flex; justify-content: space-around; margin: 15px 0; }}
-            .sig-box {{ width: 40%; text-align: center; }}
-            .sig-line {{ border-top: 1px solid #999; margin-bottom: 4px; }}
-            .sig-label {{ font-size: 9px; color: #888; }}
-            .contact {{ font-size: 9px; color: #666; text-align: center; padding: 8px; background: #f5f5f5; border-radius: 4px; }}
-            .meta {{ font-size: 8px; color: #aaa; text-align: right; margin-top: 5px; }}
-        </style>
-    </head>
+    <head><meta charset="UTF-8"></head>
     <body>
-        <div class="comprobante">
-            <div class="header">
-                <div>
-                    <h1 class="company-title">{empresa_data['nombre']}</h1>
-                    <p class="company-ruc">RUC: {empresa_data['ruc']}</p>
-                    <p class="company-details">📍 {empresa_data['direccion']} | 📞 {empresa_data['telefono']} | ✉️ {empresa_data['email']}</p>
+    <style>
+        @page {{ size: A4; margin: 15mm; }}
+        body {{ font-family: Helvetica, Arial, sans-serif; font-size: 10px; margin: 0; padding: 0; }}
+        h1 {{ font-size: 18px; color: #1a73e8; margin: 0 0 2px 0; }}
+        h2 {{ font-size: 13px; color: #1a73e8; margin: 0 0 3px 0; }}
+        h3 {{ font-size: 11px; color: #1a73e8; margin: 0 0 5px 0; padding-bottom: 3px; border-bottom: 1px solid #e0e0e0; }}
+        .subtitle {{ font-size: 9px; color: #666; margin: 1px 0; }}
+        .small {{ font-size: 8px; color: #888; }}
+        .right {{ text-align: right; }}
+        .center {{ text-align: center; }}
+        .bold {{ font-weight: bold; }}
+        .label {{ color: #555; font-weight: bold; }}
+        .value {{ color: #333; }}
+        .box {{ background-color: #f0f4f8; padding: 8px; border: 1px solid #ddd; margin-bottom: 8px; }}
+        .blue-box {{ background-color: #1a73e8; color: white; padding: 12px; text-align: center; margin: 10px 0; }}
+        .blue-box .big {{ font-size: 24px; font-weight: bold; }}
+        .blue-box .small-white {{ font-size: 9px; opacity: 0.9; }}
+        .green-box {{ background-color: #e8f5e9; border: 1px solid #c8e6c9; padding: 6px; text-align: center; margin: 8px 0; font-size: 9px; color: #2e7d32; }}
+        .badge {{ background-color: #28a745; color: white; padding: 2px 8px; font-size: 8px; font-weight: bold; }}
+        .divider {{ border-top: 2px solid #1a73e8; margin: 8px 0; }}
+        .footer {{ border-top: 1px solid #e0e0e0; padding-top: 5px; margin-top: 10px; font-size: 8px; color: #888; text-align: center; }}
+        .barcode {{ font-family: monospace; font-size: 8px; text-align: center; color: #666; margin: 5px 0; }}
+    </style>
+    <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+            <td>
+                <h1>{empresa_data['nombre']}</h1>
+                <p class="subtitle">RUC: {empresa_data['ruc']}</p>
+                <p class="small">{empresa_data['direccion']} | {empresa_data['telefono']} | {empresa_data['email']}</p>
+            </td>
+            <td class="right">
+                <div class="box">
+                    <h2>COMPROBANTE DE PAGO</h2>
+                    <p style="font-size:11px;">No. <b>{pago_data['numero_comprobante']}</b></p>
+                    <p><span class="badge">{estado_display}</span></p>
+                    <p class="small">Generado: {fecha_generacion}</p>
                 </div>
-                <div class="doc-info">
-                    <h2 class="doc-type">COMPROBANTE DE PAGO</h2>
-                    <p class="doc-number">No. {pago_data['numero_comprobante']}</p>
-                    <span class="status-badge">{estado_display}</span>
-                    <p class="meta">Generado: {fecha_generacion}</p>
+            </td>
+        </tr>
+    </table>
+    <hr class="divider">
+    <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+            <td width="48%" valign="top">
+                <div class="box">
+                    <h3>Datos del Cliente</h3>
+                    <table width="100%" cellpadding="2" cellspacing="0">
+                        <tr><td class="label">Nombre:</td><td class="value">{cliente_data['nombres']} {cliente_data['apellidos']}</td></tr>
+                        <tr><td class="label">Cedula:</td><td class="value">{cliente_data['cedula']}</td></tr>
+                        <tr><td class="label">Telefono:</td><td class="value">{cliente_data.get('telefono', 'N/A')}</td></tr>
+                        <tr><td class="label">Email:</td><td class="value">{cliente_data.get('email', 'N/A')}</td></tr>
+                        <tr><td class="label">Direccion:</td><td class="value">{cliente_data.get('direccion', 'N/A')}</td></tr>
+                    </table>
                 </div>
-            </div>
-            
-            <div class="main-grid">
-                <div class="section">
-                    <h3 class="section-title">👤 Datos del Cliente</h3>
-                    <div class="info-row"><span class="info-label">Nombre:</span><span class="info-value">{cliente_data['nombres']} {cliente_data['apellidos']}</span></div>
-                    <div class="info-row"><span class="info-label">Cédula:</span><span class="info-value">{cliente_data['cedula']}</span></div>
-                    <div class="info-row"><span class="info-label">Teléfono:</span><span class="info-value">{cliente_data.get('telefono', 'N/A')}</span></div>
-                    <div class="info-row"><span class="info-label">Email:</span><span class="info-value">{cliente_data.get('email', 'N/A')}</span></div>
-                    <div class="info-row"><span class="info-label">Dirección:</span><span class="info-value">{cliente_data.get('direccion', 'N/A')[:40]}{'...' if len(cliente_data.get('direccion', '')) > 40 else ''}</span></div>
+            </td>
+            <td width="4%"></td>
+            <td width="48%" valign="top">
+                <div class="box">
+                    <h3>Plan y Pago</h3>
+                    <table width="100%" cellpadding="2" cellspacing="0">
+                        <tr><td class="label">Plan:</td><td class="value">{cliente_data.get('tipo_plan', 'Sin plan')}</td></tr>
+                        <tr><td class="label">Valor Plan:</td><td class="value">$ {cliente_data.get('precio_plan', 0):.2f}</td></tr>
+                        <tr><td class="label">Fecha:</td><td class="value">{pago_data['fecha_pago']}</td></tr>
+                        <tr><td class="label">Metodo:</td><td class="value">{metodo_display}</td></tr>
+                    </table>
                 </div>
-                <div class="section">
-                    <h3 class="section-title">📋 Plan y Pago</h3>
-                    <div class="info-row"><span class="info-label">Plan:</span><span class="info-value">{cliente_data.get('tipo_plan', 'Sin plan')}</span></div>
-                    <div class="info-row"><span class="info-label">Valor Plan:</span><span class="info-value">$ {cliente_data.get('precio_plan', 0):.2f}</span></div>
-                    <div class="info-row"><span class="info-label">Fecha:</span><span class="info-value">{pago_data['fecha_pago']}</span></div>
-                    <div class="info-row"><span class="info-label">Método:</span><span class="info-value">{metodo_display}</span></div>
-                </div>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Concepto</h3>
-                <p style="margin: 0; color: #333;">{pago_data['concepto']}</p>
-            </div>
-            
-            <div class="amount-box">
-                <div class="amount-label">MONTO TOTAL PAGADO</div>
-                <div class="amount-value">$ {pago_data['monto']:.2f}</div>
-                <div class="amount-concept">{pago_data['concepto']}</div>
-            </div>
-            
-            <div class="barcode">
-                {pago_data['numero_comprobante']} | {cliente_data['cedula']} | ${pago_data['monto']:.2f} | {pago_data['fecha_pago']}
-            </div>
-            
-            <div class="footer">
-                <div class="footer-message">
-                    <p>✅ Este documento es un comprobante oficial de pago. Guarde este comprobante para sus registros.</p>
-                </div>
-                <div class="signatures">
-                    <div class="sig-box"><div class="sig-line"></div><div class="sig-label">Firma del Cliente</div></div>
-                    <div class="sig-box"><div class="sig-line"></div><div class="sig-label">Recibido por</div></div>
-                </div>
-                <div class="contact">
-                    📞 Atención: {empresa_data['telefono']} | ✉️ {empresa_data['email']} | L-V 08:00-18:00 | S 09:00-14:00
-                </div>
-            </div>
-        </div>
-    </body>
-    </html>
+            </td>
+        </tr>
+    </table>
+    <div class="box">
+        <h3>Concepto</h3>
+        <p>{pago_data['concepto']}</p>
+    </div>
+    <div class="blue-box">
+        <p class="small-white">MONTO TOTAL PAGADO</p>
+        <p class="big">$ {pago_data['monto']:.2f}</p>
+        <p class="small-white">{pago_data['concepto']}</p>
+    </div>
+    <p class="barcode">{pago_data['numero_comprobante']} | {cliente_data['cedula']} | ${pago_data['monto']:.2f} | {pago_data['fecha_pago']}</p>
+    <div class="green-box">
+        Este documento es un comprobante oficial de pago. Guarde este comprobante para sus registros.
+    </div>
+    <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+            <td width="40%" class="center">
+                <hr style="width:80%; margin-top:30px;">
+                <p class="small">Firma del Cliente</p>
+            </td>
+            <td width="20%"></td>
+            <td width="40%" class="center">
+                <hr style="width:80%; margin-top:30px;">
+                <p class="small">Recibido por</p>
+            </td>
+        </tr>
+    </table>
+    <div class="footer">
+        Atencion: {empresa_data['telefono']} | {empresa_data['email']} | L-V 08:00-18:00
+    </div>
+    </body></html>
     """
-    
+
     try:
-        # Intentar verificar/importar WeasyPrint si no está disponible
-        if not WEASYPRINT_AVAILABLE or HTML is None or CSS is None:
-            print("⚠️ WeasyPrint no está disponible inicialmente. Intentando cargar...")
-            if not _check_weasyprint():
-                print("❌ No se pudo cargar WeasyPrint. No se puede generar el PDF.")
-                return None
-        
-        # Usar las clases importadas globalmente o importarlas localmente
-        try:
-            if HTML is not None and CSS is not None:
-                HTML_Class = HTML
-                CSS_Class = CSS
-                FontConfigClass = FontConfiguration
-            else:
-                # type: ignore[reportMissingImports] - WeasyPrint es una dependencia opcional
-                from weasyprint import HTML as HTML_Class, CSS as CSS_Class  # type: ignore[reportMissingImports]
-                from weasyprint.text.fonts import FontConfiguration as FontConfigClass  # type: ignore[reportMissingImports]
-        except Exception as import_error:
-            print(f"⚠️ Error al importar WeasyPrint en tiempo de ejecución: {import_error}")
-            import traceback
-            traceback.print_exc()
+        from io import BytesIO
+        from xhtml2pdf import pisa
+
+        result = BytesIO()
+        pdf = pisa.CreatePDF(BytesIO(html_content.encode('utf-8')), dest=result)
+        if pdf.err:
+            print(f"xhtml2pdf errors: {pdf.err}")
             return None
-        
-        # Configurar fuentes
-        font_config = FontConfigClass()
-        
-        # Generar PDF
-        html = HTML_Class(string=html_content)
-        css = CSS_Class(string='', font_config=font_config)
-        pdf = html.write_pdf(stylesheets=[css], font_config=font_config)
-        
-        return pdf
-        
-    except ImportError as import_err:
-        # Fallback si weasyprint no está disponible
-        print(f"⚠️ ImportError al generar PDF: {import_err}")
-        import traceback
-        traceback.print_exc()
-        return None
+        return result.getvalue()
+
     except Exception as e:
         import traceback
-        print(f"❌ Error generando PDF: {e}")
-        print(f"Traceback completo:")
+        print(f"Error generando PDF: {e}")
         traceback.print_exc()
         return None
 
@@ -958,7 +864,7 @@ def descargar_comprobante(request, pago_id):
             if pdf_content is None:
                 return Response({
                     'success': False,
-                    'message': 'Error al generar el PDF. Verifique que weasyprint esté instalado en el servidor. Instale con: pip install weasyprint'
+                    'message': 'Error al generar el PDF. Verifique que xhtml2pdf esté instalado.'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Validar que el PDF no esté vacío
@@ -1056,7 +962,7 @@ def enviar_comprobante_email(request, pago_id):
             if pdf_content is None:
                 return Response({
                     'success': False,
-                    'message': 'Error al generar el PDF. Verifique que weasyprint esté instalado.'
+                    'message': 'Error al generar el PDF. Verifique que xhtml2pdf esté instalado.'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Enviar email usando Django EmailMessage

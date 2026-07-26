@@ -2,9 +2,6 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    # Temporary reset endpoint
-    path('api/auth/reset-temp/', views.reset_password_temp, name='reset_password_temp'),
-
     # Autenticación
     path('api/auth/login/', views.login, name='login'),
     path('api/auth/user-info/', views.get_user_info, name='user_info'),
