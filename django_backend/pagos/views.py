@@ -83,13 +83,7 @@ def _check_weasyprint():
         traceback.print_exc()
         return False
 
-# Intentar importar al cargar el módulo (pero puede fallar si las variables de entorno no están configuradas)
-# Esto está bien, intentaremos de nuevo cuando se necesite generar el PDF
-try:
-    _check_weasyprint()
-except Exception as e:
-    print(f"⚠️ No se pudo cargar WeasyPrint al inicio: {str(e)}")
-    print("   Se intentará cargar cuando sea necesario.")
+# WeasyPrint se carga bajo demanda cuando se necesita generar PDF
 
 # Create your views here.
 
