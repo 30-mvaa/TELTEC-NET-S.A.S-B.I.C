@@ -217,13 +217,13 @@ export default function ClientesPage() {
   });
 
   // Verificar autenticación
-  const checkAuth = () => {
+  const checkAuth = useCallback(() => {
     if (!isAuthenticated()) {
       router.push("/");
       return false;
     }
     return true;
-  };
+  }, [router]);
 
   // Cargar datos de clientes
   const loadData = useCallback(
@@ -303,7 +303,7 @@ export default function ClientesPage() {
         setSearching(false);
       }
     },
-    [searchTerm, filterEstado, filterSector, pageSize],
+    [searchTerm, filterEstado, filterSector, pageSize, checkAuth],
   );
 
   // Cargar estadísticas reales del backend
@@ -321,7 +321,7 @@ export default function ClientesPage() {
         console.error("Error cargando estadísticas:", err);
       }
     }
-  }, []);
+  }, [checkAuth]);
 
   // Cargar valores únicos (sectores y planes)
   const loadValoresUnicos = useCallback(async () => {
@@ -346,7 +346,7 @@ export default function ClientesPage() {
         console.error("Error cargando valores únicos:", err);
       }
     }
-  }, []);
+  }, [checkAuth]);
 
   // Validar cédula en tiempo real
   const validarCedulaEnTiempoReal = (cedula: string) => {
@@ -1286,7 +1286,7 @@ export default function ClientesPage() {
     } finally {
       setImporting(false);
     }
-  }, [importingFile, sectores, planes, loadData, loadEstadisticas, toast]);
+  }, [importingFile, loadData, loadEstadisticas, loadValoresUnicos, toast]);
 
   // Cerrar modal de importación y limpiar estados
   const handleCloseImportModal = useCallback(() => {
@@ -1501,7 +1501,7 @@ export default function ClientesPage() {
         );
       });
     }
-  }, [searchTerm, filterEstado]);
+  }, [searchTerm, filterEstado, toast]);
 
   // Cambiar página
   const handlePageChange = useCallback(
@@ -1533,7 +1533,7 @@ export default function ClientesPage() {
       loadEstadisticas();
       loadValoresUnicos();
     }
-  }, [loadData, loadEstadisticas, loadValoresUnicos]);
+  }, [loadData, loadEstadisticas, loadValoresUnicos, checkAuth]);
 
   // Búsqueda con debounce
   useEffect(() => {
@@ -1555,7 +1555,7 @@ export default function ClientesPage() {
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [searchTerm, filterEstado, loadData]);
+  }, [searchTerm, filterEstado, loadData, checkAuth]);
 
   if (loading)
     return <div className="p-6 text-center">Cargando clientes...</div>;
@@ -1836,7 +1836,7 @@ export default function ClientesPage() {
                 )}
                 {searchTerm && (
                   <Badge variant="secondary" className="text-xs">
-                    Búsqueda: "{searchTerm}"
+                    Búsqueda: &quot;{searchTerm}&quot;
                     <button
                       onClick={() => {
                         setSearchTerm("");
@@ -1860,7 +1860,7 @@ export default function ClientesPage() {
               Clientes ({totalCount > 0 ? totalCount : clientes.length})
               {searchTerm && (
                 <span className="text-sm font-normal text-gray-500 ml-2">
-                  - Resultados para "{searchTerm}"
+                  - Resultados para &quot;{searchTerm}&quot;
                 </span>
               )}
               {filterEstado !== "todos" && (
