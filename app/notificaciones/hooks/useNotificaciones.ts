@@ -11,9 +11,31 @@ export interface Notificacion {
   tipo: "pago_proximo" | "pago_vencido" | "corte_servicio" | "recordatorio" | "promocion" | "mantenimiento"
   mensaje: string
   estado: "pendiente" | "enviado" | "fallido"
-  canal: "whatsapp" | "email" | "sms"
+  canal: "telegram" | "whatsapp" | "email" | "sms"
+  cliente_tiene_telegram?: boolean
   fecha_creacion: string
   fecha_envio: string | null
+}
+
+export interface TelegramStatus {
+  configurado: boolean
+  conectado: boolean
+  bot_username?: string
+  bot_link?: string
+  clientes_vinculados: number
+  mensaje?: string
+  auto_activo?: boolean
+  auto_hora?: string
+}
+
+export interface ResumenAutomaticas {
+  total: number
+  creadas: number
+  enviadas_telegram: number
+  fallidas_telegram: number
+  pendientes_whatsapp: number
+  por_tipo: Record<string, number>
+  detalle: { cliente_id: number; cliente: string; tipo: string; canal: string; deuda?: number; meses_adeudados?: number; mensaje?: string }[]
 }
 
 export interface ClienteConPago {
@@ -35,6 +57,7 @@ export interface ClienteConPago {
   total_pagos_anual?: number
   ultimo_pago?: string
   deuda_actual?: number
+  telegram_chat_id?: string | null
 }
 
 export interface Estadisticas {
@@ -51,6 +74,7 @@ export interface UseNotificacionesReturn {
   loading: boolean
   error: string | null
   apiStatus: "online" | "offline"
+  telegramStatus: TelegramStatus | null
   pagination: {
     page: number
     pageSize: number
@@ -71,10 +95,13 @@ export interface UseNotificacionesReturn {
   crearNotificacion: (data: { cliente_id: number; tipo: string; mensaje: string; canal: string }) => Promise<{ success: boolean; message?: string }>
   enviarMasiva: (data: { tipo: string; mensaje: string }) => Promise<{ success: boolean; message?: string; data?: any }>
   generarAutomaticas: () => Promise<{ success: boolean; message?: string; data?: any }>
+  previsualizarAutomaticas: () => Promise<{ success: boolean; message?: string; data?: ResumenAutomaticas }>
   limpiarNotificaciones: (tipo: string, dias?: number) => Promise<{ success: boolean; message?: string; data?: any }>
   crearNotificacionCliente: (cliente: ClienteConPago) => Promise<{ success: boolean; message?: string }>
   copyToClipboard: (text: string) => Promise<boolean>
   sendWhatsApp: (notif: Notificacion) => Promise<{ success: boolean; message?: string }>
+  sendTelegram: (notif: Notificacion) => Promise<{ success: boolean; message?: string }>
+  actualizarChatId: (cliente_id: number, chat_id: string) => Promise<{ success: boolean; message?: string }>
 }
 
 const DEFAULT_PAGE_SIZE = 20
@@ -86,11 +113,12 @@ export function useNotificaciones(): UseNotificacionesReturn {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [apiStatus, setApiStatus] = useState<"online" | "offline">("offline")
-  
+  const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null)
+
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [totalItems, setTotalItems] = useState(0)
-  
+
   const [searchTerm, setSearchTerm] = useState("")
   const [filterTipo, setFilterTipo] = useState<Notificacion["tipo"] | "todos">("todos")
   const [filterEstado, setFilterEstado] = useState<Notificacion["estado"] | "todos">("todos")
@@ -125,7 +153,17 @@ export function useNotificaciones(): UseNotificacionesReturn {
           headers: { "Content-Type": "application/json" },
           signal: AbortSignal.timeout(10000),
         }).then((res) => res.json()),
+        fetch(API_ENDPOINTS.NOTIFICACIONES_TELEGRAM_STATUS, {
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(8000),
+        }).then((res) => res.json()),
       ])
+
+      if (results[3].status === "fulfilled" && results[3].value?.success) {
+        setTelegramStatus(results[3].value.data)
+      } else {
+        setTelegramStatus(null)
+      }
 
       if (results[0].status === "fulfilled" && results[0].value) {
         const data = results[0].value
@@ -171,7 +209,7 @@ export function useNotificaciones(): UseNotificacionesReturn {
           method: "POST",
           body: JSON.stringify(data),
         })
-        
+
         if (res.success) {
           await cargarDatos()
           return { success: true, message: res.message || "Notificación creada exitosamente" }
@@ -191,7 +229,7 @@ export function useNotificaciones(): UseNotificacionesReturn {
           method: "POST",
           body: JSON.stringify(data),
         })
-        
+
         if (res.success) {
           await cargarDatos()
           return { success: true, message: res.message, data: res.data }
@@ -209,7 +247,7 @@ export function useNotificaciones(): UseNotificacionesReturn {
       const res = await apiRequest(API_ENDPOINTS.NOTIFICACIONES_GENERAR_AUTOMATICAS, {
         method: "POST",
       })
-      
+
       if (res.success) {
         await cargarDatos()
         return { success: true, message: res.message, data: res.data }
@@ -220,6 +258,22 @@ export function useNotificaciones(): UseNotificacionesReturn {
     }
   }, [cargarDatos])
 
+  const previsualizarAutomaticas = useCallback(async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.NOTIFICACIONES_GENERAR_AUTOMATICAS, {
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(20000),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        return { success: true, message: data.message, data: data.data as ResumenAutomaticas }
+      }
+      return { success: false, message: data.message || "No se pudo calcular la vista previa" }
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : "Error de red" }
+    }
+  }, [])
+
   const limpiarNotificaciones = useCallback(
     async (tipo: string, dias?: number) => {
       try {
@@ -227,7 +281,7 @@ export function useNotificaciones(): UseNotificacionesReturn {
           method: "POST",
           body: JSON.stringify({ tipo, dias }),
         })
-        
+
         if (res.success) {
           await cargarDatos()
           return { success: true, message: res.message, data: res.data }
@@ -278,7 +332,11 @@ export function useNotificaciones(): UseNotificacionesReturn {
 
     try {
       let numero = notif.cliente_telefono.replace(/\D/g, "")
-      
+
+      if (!numero) {
+        return { success: false, message: "Número de teléfono inválido" }
+      }
+
       if (!numero.startsWith("593")) {
         if (numero.startsWith("0")) {
           numero = "593" + numero.substring(1)
@@ -289,7 +347,7 @@ export function useNotificaciones(): UseNotificacionesReturn {
 
       const mensajeCodificado = encodeURIComponent(notif.mensaje)
       const urlWhatsApp = `https://wa.me/${numero}?text=${mensajeCodificado}`
-      
+
       window.open(urlWhatsApp, "_blank")
 
       await apiRequest(API_ENDPOINTS.NOTIFICACION_MARK_ENVIADO(notif.id), {
@@ -304,6 +362,42 @@ export function useNotificaciones(): UseNotificacionesReturn {
     }
   }, [cargarDatos])
 
+  const sendTelegram = useCallback(async (notif: Notificacion) => {
+    try {
+      const res = await fetch(API_ENDPOINTS.NOTIFICACION_ENVIAR(notif.id), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      const data = await res.json().catch(() => ({}))
+      await cargarDatos()
+      if (res.ok && data.success) {
+        return { success: true, message: data.message || "Enviado por Telegram" }
+      }
+      return { success: false, message: data.message || "No se pudo enviar por Telegram" }
+    } catch (err) {
+      return { success: false, message: err instanceof Error ? err.message : "Error de red" }
+    }
+  }, [cargarDatos])
+
+  const actualizarChatId = useCallback(
+    async (cliente_id: number, chat_id: string) => {
+      try {
+        const res = await apiRequest(API_ENDPOINTS.NOTIFICACIONES_ACTUALIZAR_CHAT_ID, {
+          method: "POST",
+          body: JSON.stringify({ cliente_id, chat_id }),
+        })
+        if (res.success) {
+          await cargarDatos()
+          return { success: true, message: res.message }
+        }
+        return { success: false, message: res.message || "Error al actualizar Chat ID" }
+      } catch (err) {
+        return { success: false, message: err instanceof Error ? err.message : "Error desconocido" }
+      }
+    },
+    [cargarDatos]
+  )
+
   return {
     notificaciones,
     clientes,
@@ -311,6 +405,7 @@ export function useNotificaciones(): UseNotificacionesReturn {
     loading,
     error,
     apiStatus,
+    telegramStatus,
     pagination: { page, pageSize, totalPages, totalItems },
     filters: { searchTerm, tipo: filterTipo, estado: filterEstado },
     setPage,
@@ -322,9 +417,12 @@ export function useNotificaciones(): UseNotificacionesReturn {
     crearNotificacion,
     enviarMasiva,
     generarAutomaticas,
+    previsualizarAutomaticas,
     limpiarNotificaciones,
     crearNotificacionCliente,
     copyToClipboard,
     sendWhatsApp,
+    sendTelegram,
+    actualizarChatId,
   }
 }

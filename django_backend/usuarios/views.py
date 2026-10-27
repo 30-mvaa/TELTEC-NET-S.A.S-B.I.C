@@ -2,6 +2,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from django.conf import settings
 from .services import UsuarioService
 from datetime import datetime, timedelta
 
@@ -201,35 +202,35 @@ def delete_usuario(request, user_id):
 def forgot_password(request):
     """Solicitar recuperación de contraseña"""
     email = request.data.get('email')
-    
+
     if not email:
         return Response({
             'success': False,
             'message': 'Email es requerido'
         }, status=status.HTTP_400_BAD_REQUEST)
-    
+
     try:
-        success, token = UsuarioService.generate_reset_token(email)
-        
-        if success:
-            return Response({
-                'success': True,
-                'message': 'Se ha enviado un enlace de recuperación a su email',
-                'data': {
-                    'token': token,  # Solo para testing, remover en producción
-                    'expires': (datetime.now() + timedelta(hours=24)).isoformat()
-                }
-            }, status=status.HTTP_200_OK)
-        else:
+        success, message = UsuarioService.generate_reset_token(email)
+
+        if not success and message != "Usuario no encontrado":
+            error_message = (
+                message if settings.DEBUG
+                else 'No se pudo enviar el correo de recuperación. Revisa la configuración SMTP.'
+            )
             return Response({
                 'success': False,
-                'message': token  # token contiene el mensaje de error
-            }, status=status.HTTP_404_NOT_FOUND)
-        
+                'message': error_message,
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({
+            'success': True,
+            'message': 'Si el correo está registrado, recibirá un enlace de recuperación en breve.',
+        }, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({
             'success': False,
-            'message': f'Error en el servidor: {str(e)}'
+            'message': f'Ocurrió un error al procesar la solicitud: {e}' if settings.DEBUG else 'Ocurrió un error al procesar la solicitud.',
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -319,7 +320,7 @@ def get_perfil(request):
         from django.db import connection
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT id, email, nombre, rol, activo, fecha_creacion, last_login
+                SELECT id, email, nombre, rol, activo, fecha_creacion, last_activity
                 FROM usuarios 
                 WHERE email = %s
             """, [email])

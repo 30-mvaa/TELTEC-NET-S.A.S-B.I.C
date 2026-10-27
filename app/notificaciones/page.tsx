@@ -18,6 +18,7 @@ function NotificacionesContent() {
     loading,
     error,
     apiStatus,
+    telegramStatus,
     pagination,
     filters,
     setPage,
@@ -29,10 +30,13 @@ function NotificacionesContent() {
     crearNotificacion,
     enviarMasiva,
     generarAutomaticas,
+    previsualizarAutomaticas,
     limpiarNotificaciones,
     crearNotificacionCliente,
     copyToClipboard,
     sendWhatsApp,
+    sendTelegram,
+    actualizarChatId,
   } = useNotificaciones()
 
   const handleCopyMessage = useCallback(
@@ -48,13 +52,42 @@ function NotificacionesContent() {
   )
 
   const handleGenerarAutomaticas = useCallback(async () => {
+    const preview = await previsualizarAutomaticas()
+    if (!preview.success || !preview.data) {
+      toast(preview.message || "No se pudo calcular los avisos", "error")
+      return
+    }
+    const r = preview.data
+    if (r.total === 0) {
+      toast("Hoy no corresponde ningún aviso (3 días antes del pago / 2 días de vencido)", "success")
+      return
+    }
+    const etiquetas: Record<string, string> = {
+      pago_proximo: "Pago próximo (3 días antes)",
+      pago_vencido: "Pago vencido (2+ días)",
+      corte_servicio: "Aviso de corte (3+ meses)",
+    }
+    const porTelegram = r.detalle.filter((d) => d.canal === "telegram").length
+    const resumenTipos = Object.entries(r.por_tipo)
+      .map(([tipo, n]) => `• ${etiquetas[tipo] || tipo}: ${n}`)
+      .join("\n")
+    const lista = r.detalle
+      .slice(0, 10)
+      .map((d) => `- ${d.cliente} (${d.canal}${d.meses_adeudados ? `, ${d.meses_adeudados} meses` : ""})`)
+      .join("\n")
+    const ok = window.confirm(
+      `Hoy corresponden ${r.total} avisos:\n${resumenTipos}\n\n${lista}${r.total > 10 ? "\n..." : ""}\n\n` +
+        `${porTelegram} se enviarán YA por Telegram; ${r.total - porTelegram} quedarán pendientes para WhatsApp.\n\n¿Continuar?`
+    )
+    if (!ok) return
+
     const result = await generarAutomaticas()
     if (result.success) {
       toast(result.message || "Notificaciones generadas exitosamente", "success")
     } else {
       toast(result.message || "Error al generar notificaciones", "error")
     }
-  }, [generarAutomaticas, toast])
+  }, [generarAutomaticas, previsualizarAutomaticas, toast])
 
   if (loading && !estadisticas) {
     return (
@@ -95,18 +128,45 @@ function NotificacionesContent() {
             </div>
 
             <div className="flex items-center space-x-3">
-              <div
-                className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
-                  apiStatus === "online"
-                    ? "bg-green-50 text-green-700 border border-green-200"
-                    : "bg-red-50 text-red-700 border border-red-200"
-                }`}
-              >
+              {telegramStatus?.bot_link && (
+                <a
+                  href={telegramStatus.bot_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={telegramStatus?.mensaje || "Bot de Telegram para notificaciones"}
+                  className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm border ${
+                    telegramStatus?.conectado
+                      ? "bg-sky-50 text-sky-700 border-sky-200"
+                      : "bg-gray-50 text-gray-600 border-gray-200"
+                  }`}
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full ${telegramStatus?.conectado ? "bg-sky-500" : "bg-gray-400"}`}
+                  ></div>
+                  <span>
+                    {telegramStatus?.conectado
+                      ? `Telegram @${telegramStatus.bot_username} · ${telegramStatus.clientes_vinculados} vinculados · ${
+                          telegramStatus.auto_activo ? `Auto ${telegramStatus.auto_hora}:00` : "Auto desactivado"
+                        }`
+                      : telegramStatus?.configurado === false
+                        ? "Telegram sin configurar"
+                        : "Telegram desconectado"}
+                  </span>
+                </a>
+              )}
                 <div
-                  className={`w-2 h-2 rounded-full ${apiStatus === "online" ? "bg-green-500" : "bg-red-500"}`}
-                ></div>
-                <span>{apiStatus === "online" ? "Conectado" : "Desconectado"}</span>
-              </div>
+                  className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
+                    apiStatus === "online"
+                      ? "bg-green-50 text-green-700 border border-green-200"
+                      : "bg-red-50 text-red-700 border border-red-200"
+                  }`}
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full ${apiStatus === "online" ? "bg-green-500" : "bg-red-500"}`}
+                  ></div>
+                  <span>{apiStatus === "online" ? "Conectado" : "Desconectado"}</span>
+                </div>
+
             </div>
           </div>
         </div>
@@ -129,8 +189,6 @@ function NotificacionesContent() {
         )}
 
         <StatsCards estadisticas={estadisticas} />
-
-
 
         <div className="flex flex-wrap justify-center gap-4 mb-8">
           <Button variant="outline" onClick={cargarDatos} disabled={loading} className="text-sm">
@@ -182,6 +240,10 @@ function NotificacionesContent() {
               toast(result.message || "Error al abrir WhatsApp", "error")
             }
           }}
+          onSendTelegram={async (notif) => {
+            const result = await sendTelegram(notif)
+            toast(result.message || (result.success ? "Enviado por Telegram" : "Error al enviar"), result.success ? "success" : "error")
+          }}
         />
 
         <ClientList
@@ -194,6 +256,15 @@ function NotificacionesContent() {
               toast("Notificación creada exitosamente", "success")
             } else {
               toast(result.message || "Error al crear notificación", "error")
+            }
+            return result
+          }}
+          onActualizarChatId={async (clienteId, chatId) => {
+            const result = await actualizarChatId(clienteId, chatId)
+            if (result.success) {
+              toast(result.message || "Chat ID actualizado exitosamente", "success")
+            } else {
+              toast(result.message || "Error al actualizar Chat ID", "error")
             }
             return result
           }}

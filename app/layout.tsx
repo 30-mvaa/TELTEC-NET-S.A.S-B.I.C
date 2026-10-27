@@ -1,18 +1,13 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Inter, Poppins } from "next/font/google"
 import "bootstrap/dist/css/bootstrap.min.css"
 import "bootstrap-icons/font/bootstrap-icons.css"
 import "./globals.css"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { ToastProvider } from "@/app/components/shared/Toast"
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
-const poppins = Poppins({ 
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
-  subsets: ["latin"],
-  variable: "--font-poppins"
-})
+const inter = { variable: "--font-inter", className: "" }
+const poppins = { variable: "--font-poppins", className: "" }
 
 export const metadata: Metadata = {
   title: "TelTec Net - Sistema de Gestión",

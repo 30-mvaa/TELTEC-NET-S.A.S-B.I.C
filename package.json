@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint app/sitio-web-publico",
     "start:all": "bash start-dev.sh",
     "start:backend": "cd django_backend && source venv/bin/activate && python manage.py runserver",
     "start:frontend": "next dev"

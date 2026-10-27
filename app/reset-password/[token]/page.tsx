@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter, useParams, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,8 +10,9 @@ import { API_ENDPOINTS } from "@/lib/config/api"
 
 export default function ResetPasswordPage() {
   const router = useRouter()
-  const params = useSearchParams()
-  const token = params.get("token") || ""
+  const routeParams = useParams()
+  const searchParams = useSearchParams()
+  const token = (typeof routeParams?.token === "string" ? routeParams.token : "") || searchParams.get("token") || ""
   const [newPassword, setNewPassword] = useState("")
   const [msg, setMsg] = useState("")
   const [loading, setLoading] = useState(false)
@@ -23,7 +24,7 @@ export default function ResetPasswordPage() {
       const res = await fetch(API_ENDPOINTS.RESET_PASSWORD, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, newPassword }),
+        body: JSON.stringify({ token, password: newPassword }),
       })
       const j = await res.json()
       setMsg(j.message)

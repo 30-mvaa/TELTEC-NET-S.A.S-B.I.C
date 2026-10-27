@@ -7,12 +7,13 @@ import os
 from urllib.parse import urlparse, parse_qs
 from dotenv import load_dotenv
 
-# Cargar variables de entorno desde .env.local (si existe)
-load_dotenv('../.env.local', override=True)
-load_dotenv('../.env', override=True)
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# django_backend/  →  raíz del repo
 BASE_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = BASE_DIR.parent
+
+# Rutas absolutas: no dependen del cwd al arrancar Django
+load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / '.env.local', override=True)
 
 # SECURITY
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
@@ -98,7 +99,7 @@ if DATABASE_URL:
             'HOST': parsed.hostname or 'localhost',
             'PORT': str(port),
             'OPTIONS': {
-                'sslmode': params.get('sslmode', ['require'])[0],
+                'sslmode': 'disable',
             },
         }
     }
@@ -120,6 +121,13 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
+]
+
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
 ]
 
 # Internationalization
@@ -193,12 +201,15 @@ TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 
 # Email Configuration
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
-EMAIL_PORT = int(os.environ.get('SMTP_PORT', 587))
+EMAIL_HOST = os.environ.get('SMTP_HOST') or 'smtp.gmail.com'
+EMAIL_PORT = int(os.environ.get('SMTP_PORT') or 587)
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('SMTP_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('SMTP_PASS', '')
-DEFAULT_FROM_EMAIL = os.environ.get('SMTP_FROM', EMAIL_HOST_USER)
+DEFAULT_FROM_EMAIL = os.environ.get('SMTP_FROM') or EMAIL_HOST_USER
+
+_default_frontend = 'http://localhost:3000' if DEBUG else 'https://web-teltec-u5kr.vercel.app'
+FRONTEND_URL = (os.environ.get('FRONTEND_URL') or os.environ.get('NEXTAUTH_URL') or _default_frontend).rstrip('/')
 
 # Cache
 CACHES = {

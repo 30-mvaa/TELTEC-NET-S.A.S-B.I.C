@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Bell, CheckCircle, Clock, Copy, Search, XCircle, MessageCircle } from "lucide-react"
+import { useState } from "react"
+import { Bell, CheckCircle, Clock, Copy, Search, XCircle, MessageCircle, Send } from "lucide-react"
 import type { Notificacion } from "../hooks/useNotificaciones"
 
 interface NotificationListProps {
@@ -24,6 +25,7 @@ interface NotificationListProps {
   onPageSizeChange: (size: number) => void
   onCopyMessage: (notif: Notificacion) => void
   onSendWhatsApp: (notif: Notificacion) => Promise<void>
+  onSendTelegram: (notif: Notificacion) => Promise<void>
 }
 
 const tiposNotificacion = [
@@ -52,7 +54,19 @@ export function NotificationList({
   onPageSizeChange,
   onCopyMessage,
   onSendWhatsApp,
+  onSendTelegram,
 }: NotificationListProps) {
+  const [enviandoId, setEnviandoId] = useState<number | null>(null)
+
+  const handleTelegram = async (notif: Notificacion) => {
+    setEnviandoId(notif.id)
+    try {
+      await onSendTelegram(notif)
+    } finally {
+      setEnviandoId(null)
+    }
+  }
+
   const getTipoBadge = (tipo: Notificacion["tipo"]) => {
     const configs: Record<string, { color: string; label: string }> = {
       pago_proximo: { color: "bg-blue-50 text-blue-700 border-blue-200", label: "Pago Próximo" },
@@ -83,7 +97,8 @@ export function NotificationList({
   }
 
   const getCanalBadge = (canal: Notificacion["canal"]) => {
-    const configs = {
+    const configs: Record<string, { color: string; label: string }> = {
+      telegram: { color: "bg-sky-50 text-sky-700 border-sky-200", label: "TELEGRAM" },
       whatsapp: { color: "bg-green-50 text-green-700 border-green-200", label: "WHATSAPP" },
       email: { color: "bg-purple-50 text-purple-700 border-purple-200", label: "EMAIL" },
       sms: { color: "bg-orange-50 text-orange-700 border-orange-200", label: "SMS" },
@@ -183,6 +198,11 @@ export function NotificationList({
                         {getEstadoBadge(notif.estado)}
                         {getTipoBadge(notif.tipo)}
                         {getCanalBadge(notif.canal)}
+                        {notif.estado !== "enviado" && !notif.cliente_tiene_telegram && (
+                          <Badge variant="outline" className="bg-gray-50 text-gray-500 border-gray-200">
+                            Sin Telegram
+                          </Badge>
+                        )}
                       </div>
                     </div>
                     <p className="text-sm text-gray-600 line-clamp-2">{notif.mensaje}</p>
@@ -197,6 +217,18 @@ export function NotificationList({
                     </div>
                   </div>
                   <div className="ml-4 flex-shrink-0 flex gap-2">
+                    {notif.cliente_tiene_telegram && notif.estado !== "enviado" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-sky-600 border-sky-200 hover:bg-sky-50"
+                        disabled={enviandoId === notif.id}
+                        onClick={() => handleTelegram(notif)}
+                      >
+                        <Send className="h-4 w-4 mr-1" />
+                        {enviandoId === notif.id ? "Enviando..." : notif.estado === "fallido" ? "Reintentar Telegram" : "Telegram"}
+                      </Button>
+                    )}
                     {notif.canal === "whatsapp" && notif.cliente_telefono && notif.estado === "pendiente" && (
                       <Button
                         variant="outline"

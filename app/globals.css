@@ -8,6 +8,8 @@
 
 /* Bootstrap Typography Variables */
 :root {
+  --font-inter: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-poppins: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --bs-font-sans-serif: var(--font-poppins), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --bs-font-monospace: 'Courier New', monospace;
   --bs-body-font-family: var(--bs-font-sans-serif);

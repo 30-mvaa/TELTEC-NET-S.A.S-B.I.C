@@ -1,318 +1,162 @@
-"use client";
+"use client"
 
-import { motion } from "framer-motion";
-import { ArrowRight, Wifi, Sparkles } from "lucide-react";
-import { getWhatsAppLink } from "../lib/whatsapp";
-import AnimatedCounter from "./AnimatedCounter";
-
-interface Informacion {
-  titulo?: string;
-  subtitulo?: string;
-  descripcion?: string;
-  lema?: string;
-}
-
-interface Empresa {
-  nombre?: string;
-  telefono?: string;
-  email?: string;
-}
+import { motion } from "framer-motion"
+import { ArrowRight, Wifi, Sparkles, Zap, MessageCircle } from "lucide-react"
+import { getWhatsAppLink } from "../lib/whatsapp"
+import AnimatedCounter from "./AnimatedCounter"
+import InfiniteZoom from "./InfiniteZoom"
+import { EmpresaInfo } from "../lib/defaultData"
 
 interface HeroProps {
-  informacion?: Informacion;
-  empresa?: Empresa;
-  isVisible: boolean;
+  informacion?: {
+    titulo?: string
+    subtitulo?: string
+    descripcion?: string
+    lema?: string
+  }
+  empresa?: Partial<EmpresaInfo>
+  isVisible: boolean
 }
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.12, delayChildren: 0.2 },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 30 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] },
-  },
-};
-
 export default function Hero({ informacion, empresa, isVisible }: HeroProps) {
+  const eyebrowText = informacion?.subtitulo || "INTERNET DE NUEVA GENERACIÓN"
+  const mainTitle = "TelTec Net — Internet de Alta Velocidad"
+  const supportingLine = informacion?.lema || "Conectando tu mundo digital"
+  const description =
+    informacion?.descripcion ||
+    "Somos una empresa líder en servicios de internet de alta velocidad, comprometida con brindar conectividad confiable y soporte técnico excepcional en toda la provincia del Cañar."
+
+  const clientesCount = 100
+
   return (
     <section
       id="inicio"
-      className="relative min-h-[90vh] flex items-center overflow-hidden bg-slate-950"
+      className="relative flex items-center justify-center overflow-hidden bg-[#020617] pt-20 pb-12 lg:pt-24 lg:pb-16"
     >
-      {/* Background gradient orbs */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -left-40 w-[500px] h-[500px] bg-teltec-blue/20 rounded-full blur-[120px]" />
-        <div className="absolute -bottom-40 -right-40 w-[600px] h-[600px] bg-teltec-blue-dark/15 rounded-full blur-[120px]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-teltec-blue/5 rounded-full blur-[150px]" />
-        {/* Grid pattern */}
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMCAwaDQwdjQwSDB6IiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoMjU1LDI1NSwyNTUsMC4wMykiIHN0cm9rZS13aWR0aD0iMSIvPjwvc3ZnPg==')] opacity-50" />
+      {/* Luces de fondo y efectos ópticos de fibra */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div className="absolute -top-32 -left-32 w-96 h-96 bg-teltec-blue/20 rounded-full blur-[140px]" />
+        <div className="absolute top-1/2 -right-32 w-96 h-96 bg-cyan-500/15 rounded-full blur-[140px]" />
+        <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-teltec-green/10 rounded-full blur-[120px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#020617_90%)]" />
       </div>
 
-      <div className="relative max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 w-full">
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate={isVisible ? "visible" : "hidden"}
-          className="grid lg:grid-cols-2 gap-12 items-center"
-        >
-          <div className="space-y-6">
+      <div className="relative max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 w-full">
+        <div className="grid lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+          {/* COLUMNA IZQUIERDA: Mensajes principales de marca y CTAs */}
+          <div className="lg:col-span-6 flex flex-col space-y-4 text-left">
+            {/* Eyebrow suministrado */}
             <motion.div
-              variants={itemVariants}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 backdrop-blur-sm"
+              initial={{ opacity: 0, y: -10 }}
+              animate={isVisible ? { opacity: 1, y: 0 } : {}}
+              transition={{ duration: 0.5 }}
+              className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 backdrop-blur-md w-fit"
             >
-              <Sparkles className="w-3.5 h-3.5 text-teltec-blue-light" />
-              <span className="text-xs font-medium text-slate-300">
-                Internet Wireless
+              <div className="p-0.5 rounded-full bg-cyan-500 animate-pulse">
+                <Sparkles className="w-2.5 h-2.5 text-slate-950" />
+              </div>
+              <span className="text-[11px] font-extrabold text-cyan-300 uppercase tracking-widest">
+                {eyebrowText}
               </span>
             </motion.div>
 
-            <motion.h1
-              variants={itemVariants}
-              className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.1]"
+            {/* Título Principal y Línea de Apoyo */}
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={isVisible ? { opacity: 1, y: 0 } : {}}
+              transition={{ duration: 0.6, delay: 0.1 }}
+              className="space-y-1.5"
             >
-              {informacion?.titulo || "TelTec Net"}
-              <span className="block mt-2 text-transparent bg-clip-text bg-gradient-to-r from-teltec-blue-light via-teltec-blue to-teltec-blue-dark">
-                {informacion?.lema || "Conectando tu mundo digital"}
-              </span>
-            </motion.h1>
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white leading-tight">
+                {mainTitle}
+              </h1>
+              <p className="text-lg sm:text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teltec-blue-light to-emerald-400">
+                {supportingLine}
+              </p>
+            </motion.div>
 
+            {/* Descripción institucional exacta */}
             <motion.p
-              variants={itemVariants}
-              className="text-base sm:text-lg text-slate-400 max-w-lg leading-relaxed"
+              initial={{ opacity: 0, y: 15 }}
+              animate={isVisible ? { opacity: 1, y: 0 } : {}}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="text-sm sm:text-base text-slate-300 leading-relaxed font-normal max-w-xl"
             >
-              {informacion?.descripcion ||
-                "Internet de alta velocidad con fibra óptica. Rápido, estable y con soporte local."}
+              {description}
             </motion.p>
 
+            {/* Botones de acción principales (CTAs) */}
             <motion.div
-              variants={itemVariants}
-              className="flex flex-col sm:flex-row gap-3 pt-2"
+              initial={{ opacity: 0, y: 15 }}
+              animate={isVisible ? { opacity: 1, y: 0 } : {}}
+              transition={{ duration: 0.6, delay: 0.3 }}
+              className="flex flex-wrap items-center gap-3 pt-1"
             >
               <a
                 href="#planes"
-                className="group inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-teltec-blue to-teltec-blue-dark text-white text-sm font-semibold hover:from-teltec-blue-light hover:to-teltec-blue transition-all duration-300 shadow-lg shadow-teltec-blue/25 hover:shadow-teltec-blue/40"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-teltec-blue to-cyan-600 hover:from-teltec-blue-light hover:to-cyan-500 text-white font-bold text-sm transition-all duration-300 shadow-md shadow-teltec-blue/30 hover:scale-[1.02] active:scale-[0.98]"
               >
-                Ver planes
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                <span>Ver planes</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </a>
+
               <a
                 href={getWhatsAppLink()}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="group inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-white/5 text-white text-sm font-semibold border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-white font-bold text-sm border border-white/15 backdrop-blur-md transition-all duration-300 hover:border-cyan-400/50 hover:scale-[1.02] active:scale-[0.98]"
               >
-                <svg
-                  className="w-5 h-5 text-teltec-green"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                >
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.195.194 1.612.181.599-.019 1.56-.479 1.977-1.379.298-.601.446-1.123.496-1.287.05-.174.027-.3-.015-.42-.038-.117-.147-.223-.326-.346Z" />
-                </svg>
-                WhatsApp
+                <MessageCircle className="w-4 h-4 text-emerald-400" />
+                <span>Hablar con un asesor</span>
               </a>
             </motion.div>
 
-            <motion.div variants={itemVariants} className="flex gap-8 pt-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-teltec-blue/10 border border-teltec-blue/20 flex items-center justify-center">
-                  <Wifi className="w-5 h-5 text-teltec-blue-light" />
+            {/* Métricas destacadas suministradas */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={isVisible ? { opacity: 1 } : {}}
+              transition={{ duration: 0.7, delay: 0.4 }}
+              className="grid grid-cols-2 gap-4 pt-4 border-t border-white/10 max-w-sm"
+            >
+              <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.03] border border-white/10">
+                <div className="p-2 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
+                  <Wifi className="w-4 h-4" />
                 </div>
                 <div>
-                  <AnimatedCounter
-                    end={100}
-                    suffix="+"
-                    label="Clientes activos"
-                  />
+                  <div className="text-xl font-black text-white">
+                    <AnimatedCounter end={clientesCount} suffix="+" label="" />
+                  </div>
+                  <p className="text-[11px] font-medium text-slate-400">Clientes</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-teltec-green/10 border border-teltec-green/20 flex items-center justify-center">
-                  <svg
-                    className="w-5 h-5 text-teltec-green"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                    />
-                  </svg>
+
+              <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.03] border border-white/10">
+                <div className="p-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
+                  <Zap className="w-4 h-4" />
                 </div>
                 <div>
-                  <AnimatedCounter
-                    end={99}
-                    suffix=".9%"
-                    label="Disponibilidad"
-                  />
+                  <div className="text-xl font-black text-white">
+                    <AnimatedCounter end={99} suffix=".9%" label="" />
+                  </div>
+                  <p className="text-[11px] font-medium text-slate-400">Uptime</p>
                 </div>
               </div>
             </motion.div>
           </div>
 
+          {/* COLUMNA DERECHA: Ventana macOS Infinite Zoom en su escala completa original */}
           <motion.div
-            variants={itemVariants}
-            className="hidden lg:flex justify-center"
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={isVisible ? { opacity: 1, scale: 1 } : {}}
+            transition={{ duration: 0.7, delay: 0.2 }}
+            className="lg:col-span-6 flex justify-center items-center w-full"
           >
-            <div className="relative w-80 h-80">
-              {/* Animated rings */}
-              <motion.div
-                className="absolute inset-0 rounded-full border border-teltec-blue/20"
-                animate={{ rotate: 360 }}
-                transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-              />
-              <motion.div
-                className="absolute inset-4 rounded-full border border-teltec-blue/15"
-                animate={{ rotate: -360 }}
-                transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-              />
-              <motion.div
-                className="absolute inset-8 rounded-full border border-teltec-blue-dark/10"
-                animate={{ rotate: 360 }}
-                transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
-              />
-
-              {/* Center glow */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <motion.div
-                  className="w-36 h-36 rounded-full bg-gradient-to-br from-teltec-blue via-teltec-blue-dark to-teltec-blue shadow-[0_0_80px_rgba(0,96,181,0.3)] flex items-center justify-center"
-                  animate={{ scale: [1, 1.05, 1] }}
-                  transition={{
-                    duration: 4,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                >
-                  <div className="text-center">
-                    <Wifi className="w-14 h-14 mx-auto mb-1 text-white" />
-                    <p className="text-lg font-bold text-white">Teltec</p>
-                  </div>
-                </motion.div>
-              </div>
-
-              {/* Floating cards */}
-              <motion.div
-                className="absolute -top-2 -right-2 bg-slate-800/80 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-xl"
-                animate={{ y: [0, -8, 0] }}
-                transition={{
-                  duration: 5,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teltec-green to-teltec-green-dark flex items-center justify-center">
-                    <svg
-                      className="w-5 h-5 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 10V3L4 14h7v7l9-11h-7z"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400">Velocidad</p>
-                    <p className="text-sm font-bold text-white">500 Mbps</p>
-                  </div>
-                </div>
-              </motion.div>
-
-              <motion.div
-                className="absolute -bottom-2 -left-2 bg-slate-800/80 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-xl"
-                animate={{ y: [0, 8, 0] }}
-                transition={{
-                  duration: 4,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: 1,
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teltec-blue-light to-teltec-blue flex items-center justify-center">
-                    <svg
-                      className="w-5 h-5 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                      />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400">Seguridad</p>
-                    <p className="text-sm font-bold text-white">100%</p>
-                  </div>
-                </div>
-              </motion.div>
+            <div className="w-full max-w-[560px]">
+              <InfiniteZoom />
             </div>
           </motion.div>
-
-          {/* Mobile indicators */}
-          <motion.div
-            variants={itemVariants}
-            className="lg:hidden flex justify-center gap-3 pt-2"
-          >
-            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10">
-              <svg
-                className="w-4 h-4 text-teltec-blue-light"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-              <span className="text-sm font-semibold text-white">500 Mbps</span>
-            </div>
-            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10">
-              <svg
-                className="w-4 h-4 text-teltec-green"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                />
-              </svg>
-              <span className="text-sm font-semibold text-white">
-                100% Seguro
-              </span>
-            </div>
-          </motion.div>
-        </motion.div>
+        </div>
       </div>
-
-      {/* Bottom fade */}
-      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-slate-950 to-transparent" />
     </section>
-  );
+  )
 }
