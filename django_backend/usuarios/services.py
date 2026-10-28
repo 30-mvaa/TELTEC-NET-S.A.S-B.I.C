@@ -54,6 +54,30 @@ class UsuarioService:
             return None
 
     @staticmethod
+    def get_all_users():
+        """Obtener todos los usuarios"""
+        try:
+            usuarios = Usuario.objects.all().order_by('-fecha_creacion')
+
+            usuarios_data = []
+            for user in usuarios:
+                usuarios_data.append({
+                    'id': user.id,
+                    'email': user.email,
+                    'nombre': user.nombre,
+                    'rol': user.rol,
+                    'activo': user.activo,
+                    'fecha_creacion': user.fecha_creacion.isoformat() if user.fecha_creacion else None,
+                    'fecha_actualizacion': user.fecha_actualizacion.isoformat() if user.fecha_actualizacion else None
+                })
+
+            return usuarios_data
+
+        except Exception as e:
+            print(f"Error obteniendo todos los usuarios: {e}")
+            return []
+
+    @staticmethod
     def create_user(email, nombre, rol, password):
         """Crear nuevo usuario"""
         try:

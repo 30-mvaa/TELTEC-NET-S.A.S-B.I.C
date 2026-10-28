@@ -958,13 +958,33 @@ def enviar_comprobante_email(request, pago_id):
             
             # Generar PDF
             pdf_content = generar_comprobante_pdf(pago_data, cliente_data)
-            
+
             if pdf_content is None:
                 return Response({
                     'success': False,
                     'message': 'Error al generar el PDF. Verifique que xhtml2pdf esté instalado.'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
+
+            # Preparar email
+            subject = f"Comprobante de Pago - TelTec Net - #{pago_data['numero_comprobante']}"
+            message = f"""
+Estimado/a {cliente_data['nombres']} {cliente_data['apellidos']},
+
+Le adjuntamos el comprobante de pago correspondiente a la transacción:
+
+Detalles del pago:
+- Número de comprobante: {pago_data['numero_comprobante']}
+- Monto: ${pago_data['monto']:.2f}
+- Fecha: {pago_data['fecha_pago']}
+- Método de pago: {pago_data['metodo_pago']}
+- Concepto: {pago_data['concepto']}
+
+Si tiene alguna pregunta, no dude en contactarnos.
+
+Saludos,
+Equipo TelTec Net
+            """.strip()
+
             # Enviar email usando Django EmailMessage
             from django.core.mail import EmailMessage
 
@@ -981,19 +1001,29 @@ def enviar_comprobante_email(request, pago_id):
             )
             email.send(fail_silently=False)
 
-            print(f"✅ Email enviado a {cliente_data['email']} con comprobante adjunto")
-            
             # Actualizar estado de envío
             cursor.execute("""
                 UPDATE pagos SET comprobante_enviado = true WHERE id = %s
             """, [pago_id])
-            
+
             return Response({
                 'success': True,
                 'message': f'Comprobante enviado exitosamente a {cliente_data["email"]}'
             }, status=status.HTTP_200_OK)
-            
+
     except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"Error enviando email: {str(e)}")
+        print(f"Traceback: {error_detail}")
+
+        # Verificar si es un error de configuración SMTP
+        if 'SMTP' in str(e) or 'AUTH' in str(e) or 'connection' in str(e).lower():
+            return Response({
+                'success': False,
+                'message': 'Error de configuración SMTP. Verifique que SMTP_HOST, SMTP_USER y SMTP_PASS estén configurados en .env.local'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         return Response({
             'success': False,
             'message': f'Error al enviar comprobante: {str(e)}'
@@ -1833,22 +1863,28 @@ def exportar_reporte_pagos_excel(request):
         fecha_inicio = request.GET.get('fecha_inicio')
         fecha_fin = request.GET.get('fecha_fin')
         metodo_pago = request.GET.get('metodo_pago')
-        
+
         generator = ReporteGenerator()
         output = generator.generar_reporte_pagos_excel(fecha_inicio, fecha_fin, metodo_pago)
-        
+
+        if output is None:
+            return Response({
+                'success': False,
+                'message': 'Error al generar el reporte Excel'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         # Generar nombre de archivo
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'reporte_pagos_{timestamp}.xlsx'
-        
+
         response = HttpResponse(
             output.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
+
         return response
-        
+
     except Exception as e:
         return Response({
             'success': False,
@@ -1889,19 +1925,25 @@ def exportar_reporte_deudas_excel(request):
     try:
         generator = ReporteGenerator()
         output = generator.generar_reporte_deudas_excel()
-        
+
+        if output is None:
+            return Response({
+                'success': False,
+                'message': 'Error al generar el reporte Excel'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         # Generar nombre de archivo
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'reporte_deudas_{timestamp}.xlsx'
-        
+
         response = HttpResponse(
             output.getvalue(),
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
+
         return response
-        
+
     except Exception as e:
         return Response({
             'success': False,

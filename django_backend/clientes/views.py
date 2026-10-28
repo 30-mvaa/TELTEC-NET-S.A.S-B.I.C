@@ -160,14 +160,7 @@ class ClienteViewSet(viewsets.ModelViewSet):
                                 c.telefono ILIKE %s
                             )"""
                         search_param = f'%{search_clean}%'
-                        # Debug: imprimir valores de búsqueda
-                        print(f"🔍 DEBUG Búsqueda cédula:")
-                        print(f"  - Término original: {search_clean}")
-                        print(f"  - Cédula normalizada: {cedula_normalizada}")
-                        print(f"  - Cédula con ceros: {cedula_busqueda}")
-                        print(f"  - Cédula sin ceros izq: {cedula_sin_ceros_izq}")
-                        print(f"  - Buscar por cédula exacta: {buscar_por_cedula_exacta}")
-                        
+
                         params.extend([
                             search_param, search_param, 
                             cedula_busqueda,  # Búsqueda exacta con ceros
@@ -193,14 +186,11 @@ class ClienteViewSet(viewsets.ModelViewSet):
                         pass
                     else:
                         # Si no es búsqueda por cédula, aplicar filtro de estado normalmente
-                        print(f"🔍 DEBUG Filtro de estado: '{estado}'")
                         if vista_existe:
                             base_query += " AND estado = %s"
                         else:
                             base_query += " AND c.estado = %s"
                         params.append(estado)
-                        print(f"🔍 DEBUG Query después de aplicar filtro de estado: {base_query[:200]}...")
-                        print(f"🔍 DEBUG Params: {params}")
                 
                 if sector and sector != 'todos':
                     if vista_existe:
@@ -208,22 +198,18 @@ class ClienteViewSet(viewsets.ModelViewSet):
                     else:
                         base_query += " AND s.nombre_sector ILIKE %s"
                     params.append(f'%{sector}%')
-                
-                # Debug: Verificar clientes suspendidos en la base de datos
+
+                # Verificar clientes suspendidos en la base de datos
                 if estado == 'suspendido':
-                    print(f"🔍 DEBUG Verificando clientes suspendidos:")
                     cursor.execute("SELECT COUNT(*) FROM clientes WHERE estado = 'suspendido'")
                     total_suspendidos = cursor.fetchone()[0]
-                    print(f"  - Total suspendidos en tabla clientes: {total_suspendidos}")
-                    
+
                     if vista_existe:
                         cursor.execute("SELECT COUNT(*) FROM clientes_deuda WHERE estado = 'suspendido'")
                         total_suspendidos_vista = cursor.fetchone()[0]
-                        print(f"  - Total suspendidos en vista clientes_deuda: {total_suspendidos_vista}")
-                        
+
                         # Verificar si hay diferencia
                         if total_suspendidos > 0 and total_suspendidos_vista == 0:
-                            print(f"  - ⚠️ PROBLEMA: La vista clientes_deuda no incluye clientes suspendidos!")
                             # Si la vista no incluye suspendidos, usar consulta directa
                             vista_existe = False
                             base_query = """
@@ -282,26 +268,14 @@ class ClienteViewSet(viewsets.ModelViewSet):
                             if estado and estado != 'todos':
                                 base_query += " AND c.estado = %s"
                                 params.append(estado)
-                            print(f"  - ✅ Cambiado a consulta directa para incluir suspendidos")
-                
-                # Debug: imprimir consulta SQL
-                print(f"🔍 DEBUG SQL Query:")
-                print(f"  - Vista existe: {vista_existe}")
-                print(f"  - Estado filtro: {estado if estado and estado != 'todos' else 'todos'}")
-                print(f"  - Buscar por cédula exacta: {buscar_por_cedula_exacta}")
-                print(f"  - Query (primeros 300 chars): {base_query[:300]}")
-                print(f"  - Params count: {len(params)}")
-                
+
                 # Contar total
                 count_query = f"SELECT COUNT(*) FROM ({base_query}) as count_query"
                 try:
                     cursor.execute(count_query, params)
                     total_count = cursor.fetchone()[0]
-                    print(f"  - Total encontrado: {total_count}")
                 except Exception as e:
-                    print(f"  - ERROR en consulta COUNT: {str(e)}")
                     raise
-                print(f"  - Total encontrado: {total_count}")
                 
                 # Ordenamiento y paginación
                 if vista_existe:
@@ -455,12 +429,7 @@ class ClienteViewSet(viewsets.ModelViewSet):
         """Actualizar un cliente existente"""
         try:
             cliente = self.get_object()
-            print(f"🔧 DEBUG Update Cliente:")
-            print(f"  - Cliente ID: {cliente.id}")
-            print(f"  - Datos recibidos: {request.data}")
-            print(f"  - Fecha nacimiento recibida: {request.data.get('fecha_nacimiento')}")
-            print(f"  - Fecha nacimiento actual: {cliente.fecha_nacimiento}")
-            
+
             # Convertir request.data a diccionario mutable
             try:
                 if hasattr(request.data, '_mutable'):
@@ -471,32 +440,21 @@ class ClienteViewSet(viewsets.ModelViewSet):
                     # Si es QueryDict u otro tipo, convertir a dict
                     data_to_update = dict(request.data.items())
             except Exception as e:
-                print(f"  - ERROR al copiar request.data: {str(e)}")
                 data_to_update = dict(request.data) if hasattr(request.data, '__dict__') else {}
-            
+
             # Asegurar que fecha_nacimiento esté presente
             fecha_nacimiento_recibida = data_to_update.get('fecha_nacimiento')
-            print(f"  - Fecha nacimiento recibida (raw): {fecha_nacimiento_recibida}")
-            print(f"  - Tipo: {type(fecha_nacimiento_recibida)}")
-            
+
             if not fecha_nacimiento_recibida or fecha_nacimiento_recibida == '' or fecha_nacimiento_recibida == 'None':
                 fecha_existente = str(cliente.fecha_nacimiento) if cliente.fecha_nacimiento else None
                 data_to_update['fecha_nacimiento'] = fecha_existente
-                print(f"  - Fecha nacimiento no enviada o vacía, manteniendo: {fecha_existente}")
-            else:
-                print(f"  - Fecha nacimiento recibida y válida: {fecha_nacimiento_recibida}")
-            
+
             # Usar ClienteUpdateSerializer para actualización
             serializer = ClienteUpdateSerializer(cliente, data=data_to_update, partial=True)
-            
+
             if serializer.is_valid():
-                print(f"  - Serializer válido, guardando...")
-                print(f"  - Datos validados: {serializer.validated_data}")
                 # Guardar cambios básicos del cliente
                 cliente = serializer.save()
-                print(f"  - Cliente guardado exitosamente")
-                print(f"  - Cliente actualizado: {cliente.nombres} {cliente.apellidos}")
-                print(f"  - Fecha nacimiento guardada: {cliente.fecha_nacimiento}")
                 
                 # Si se está cambiando el plan, asignarlo
                 plan_id = request.data.get('plan_id')
@@ -504,53 +462,52 @@ class ClienteViewSet(viewsets.ModelViewSet):
                     try:
                         from planes_app.models import Plan
                         from clientes_planes_app.models import ClientePlan
-                        
+
                         from django.db import connection
-                        print(f"  - Asignando plan ID: {plan_id}")
-                        
+
                         # Verificar que el plan existe
                         cursor = connection.cursor()
                         cursor.execute("SELECT id_plan FROM planes WHERE id_plan = %s AND estado = 'activo'", [plan_id])
                         if not cursor.fetchone():
-                            print(f"  - ERROR: Plan no encontrado")
                             return Response({
                                 'success': False,
                                 'message': 'Plan no encontrado o inactivo'
                             }, status=status.HTTP_400_BAD_REQUEST)
-                        
-                        # Desactivar planes anteriores del cliente
+
+                        # Verificar si el cliente ya tiene este plan activo
                         cursor.execute("""
-                            UPDATE clientes_planes 
-                            SET estado = 'inactivo', fecha_fin = %s 
-                            WHERE id_cliente = %s AND estado = 'activo'
-                        """, [timezone.now().date(), cliente.id])
-                        print(f"  - Planes anteriores desactivados")
-                        
-                        # Obtener nuevo ID
-                        cursor.execute("SELECT COALESCE(MAX(id_cliente_plan), 0) + 1 FROM clientes_planes")
-                        nuevo_id = cursor.fetchone()[0]
-                        
-                        # Crear nueva asignación de plan
-                        cursor.execute("""
-                            INSERT INTO clientes_planes (id_cliente_plan, id_cliente, id_plan, fecha_inicio, estado, fecha_creacion, fecha_actualizacion)
-                            VALUES (%s, %s, %s, %s, 'activo', NOW(), NOW())
-                        """, [nuevo_id, cliente.id, plan_id, timezone.now().date()])
-                        print(f"  - Nuevo plan asignado con ID: {nuevo_id}")
-                        
+                            SELECT id_cliente_plan FROM clientes_planes
+                            WHERE id_cliente = %s AND id_plan = %s AND estado = 'activo'
+                        """, [cliente.id, plan_id])
+                        plan_existente = cursor.fetchone()
+
+                        if plan_existente:
+                            # El cliente ya tiene este plan activo, no hacer nada
+                            pass
+                        else:
+                            # Desactivar planes anteriores del cliente
+                            cursor.execute("""
+                                UPDATE clientes_planes
+                                SET estado = 'inactivo', fecha_fin = %s
+                                WHERE id_cliente = %s AND estado = 'activo'
+                            """, [timezone.now().date(), cliente.id])
+
+                            # Obtener nuevo ID
+                            cursor.execute("SELECT COALESCE(MAX(id_cliente_plan), 0) + 1 FROM clientes_planes")
+                            nuevo_id = cursor.fetchone()[0]
+
+                            # Crear nueva asignación de plan
+                            cursor.execute("""
+                                INSERT INTO clientes_planes (id_cliente_plan, id_cliente, id_plan, fecha_inicio, estado, fecha_creacion, fecha_actualizacion)
+                                VALUES (%s, %s, %s, %s, 'activo', NOW(), NOW())
+                            """, [nuevo_id, cliente.id, plan_id, timezone.now().date()])
+
                     except Exception as e:
-                        print(f"  - ERROR: Plan no encontrado")
-                        return Response({
-                            'success': False,
-                            'message': 'Plan no encontrado o inactivo'
-                        }, status=status.HTTP_400_BAD_REQUEST)
-                    except Exception as e:
-                        print(f"  - ERROR al asignar plan: {str(e)}")
                         import traceback
-                        print(traceback.format_exc())
                         return Response({
                             'success': False,
                             'message': f'Error al asignar plan: {str(e)}'
-                        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        }, status=status.HTTP_400_BAD_REQUEST)
                 
                 # Recargar el cliente desde la base de datos para obtener datos actualizados
                 cliente.refresh_from_db()
@@ -591,66 +548,50 @@ class ClienteViewSet(viewsets.ModelViewSet):
             cliente_id = cliente.id
             cedula_cliente = cliente.cedula
             email_cliente = cliente.email
-            
-            print(f"🗑️ DEBUG Eliminar Cliente:")
-            print(f"  - Cliente ID: {cliente_id}")
-            print(f"  - Cédula: {cedula_cliente}")
-            print(f"  - Email: {email_cliente}")
-            
+
             # Verificar que el cliente existe antes de eliminar
             if not Cliente.objects.filter(id=cliente_id).exists():
                 return Response({
                     'success': False,
                     'message': 'Cliente no encontrado'
                 }, status=status.HTTP_404_NOT_FOUND)
-            
+
             # Eliminar todas las relaciones primero usando SQL directo para asegurar eliminación completa
-            print(f"  - Eliminando relaciones del cliente...")
             with connection.cursor() as cursor:
                 # Eliminar todas las relaciones en orden (para evitar errores de FK)
                 try:
                     cursor.execute("DELETE FROM notificaciones WHERE cliente_id = %s", [cliente_id])
-                    print(f"    - Notificaciones eliminadas")
                 except Exception as e:
-                    print(f"    - Advertencia al eliminar notificaciones: {str(e)}")
+                    pass  # Advertencia silenciosa si no hay notificaciones
                 
                 try:
                     cursor.execute("DELETE FROM clientes_planes WHERE id_cliente = %s", [cliente_id])
-                    print(f"    - Clientes_planes eliminados")
                 except Exception as e:
-                    print(f"    - Advertencia al eliminar clientes_planes: {str(e)}")
-                
+                    pass  # Advertencia silenciosa si no hay clientes_planes
+
                 try:
                     cursor.execute("DELETE FROM pagos WHERE cliente_id = %s", [cliente_id])
-                    print(f"    - Pagos eliminados")
                 except Exception as e:
-                    print(f"    - Advertencia al eliminar pagos: {str(e)}")
-                
+                    pass  # Advertencia silenciosa si no hay pagos
+
                 try:
                     cursor.execute("DELETE FROM deudas WHERE cliente_id = %s", [cliente_id])
-                    print(f"    - Deudas eliminadas")
                 except Exception as e:
-                    print(f"    - Advertencia al eliminar deudas: {str(e)}")
-                
+                    pass  # Advertencia silenciosa si no hay deudas
+
                 # Finalmente, eliminar el cliente directamente con SQL
-                print(f"  - Eliminando cliente de la tabla clientes...")
                 cursor.execute("DELETE FROM clientes WHERE id = %s", [cliente_id])
-                print(f"    - Cliente eliminado de la tabla clientes")
-            
+
             # Verificar que el cliente fue eliminado usando SQL directo
             with connection.cursor() as cursor:
                 cursor.execute("SELECT COUNT(*) FROM clientes WHERE id = %s", [cliente_id])
                 cliente_existe = cursor.fetchone()[0] > 0
-                
+
                 cursor.execute("SELECT COUNT(*) FROM clientes WHERE cedula = %s", [cedula_cliente])
                 cedula_existe = cursor.fetchone()[0] > 0
-                
+
                 cursor.execute("SELECT COUNT(*) FROM clientes WHERE email = %s", [email_cliente])
                 email_existe = cursor.fetchone()[0] > 0
-            
-            print(f"  - Cliente eliminado: {not cliente_existe}")
-            print(f"  - Cédula eliminada: {not cedula_existe}")
-            print(f"  - Email eliminado: {not email_existe}")
             
             if cliente_existe or cedula_existe:
                 raise Exception(f"El cliente con ID {cliente_id} y cédula {cedula_cliente} no pudo ser eliminado completamente de la base de datos")

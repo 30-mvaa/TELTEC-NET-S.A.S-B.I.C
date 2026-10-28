@@ -20,11 +20,18 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
     if os.environ.get('DJANGO_ENV') == 'production':
         raise ValueError('DJANGO_SECRET_KEY environment variable is required in production')
-    SECRET_KEY = 'django-insecure-dev-only-key-do-not-use-in-production'
+    # Generar una clave aleatoria para desarrollo (no para producción)
+    import secrets
+    SECRET_KEY = secrets.token_urlsafe(50)
 
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '*').split(',') if h.strip()]
+# En desarrollo, permitir localhost por defecto. En producción, usar configuración explícita.
+if DEBUG:
+    default_hosts = 'localhost,127.0.0.1'
+else:
+    default_hosts = ''  # En producción, requiere configuración explícita
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', default_hosts).split(',') if h.strip()]
 
 # Application definition
 INSTALLED_APPS = [
@@ -172,11 +179,15 @@ REST_FRAMEWORK = {
 }
 
 # CORS settings
+default_origins = 'http://localhost:3000,http://127.0.0.1:3000'
+if not DEBUG:
+    default_origins += ',https://web-teltec-u5kr.vercel.app'
+
 CORS_ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get(
         'CORS_ALLOWED_ORIGINS',
-        'http://localhost:3000,http://127.0.0.1:3000,https://web-teltec-u5kr.vercel.app'
+        default_origins
     ).split(',')
     if origin.strip()
 ]
@@ -210,6 +221,11 @@ DEFAULT_FROM_EMAIL = os.environ.get('SMTP_FROM') or EMAIL_HOST_USER
 
 _default_frontend = 'http://localhost:3000' if DEBUG else 'https://web-teltec-u5kr.vercel.app'
 FRONTEND_URL = (os.environ.get('FRONTEND_URL') or os.environ.get('NEXTAUTH_URL') or _default_frontend).rstrip('/')
+
+# En producción, asegurar que ALLOWED_HOSTS incluya el dominio de Replit
+if not DEBUG:
+    if 'teltec-backend-5cfc.onbelmo.uk' not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append('teltec-backend-5cfc.onbelmo.uk')
 
 # Cache
 CACHES = {
